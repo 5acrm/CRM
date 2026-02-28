@@ -1,0 +1,128 @@
+# CRM 客户管理系统
+
+## 项目说明
+这是一个网页版客户管理系统（CRM），部署在 Windows Server 2022 上，供公司内部使用。
+面向加密货币投资团队（6-50人），通过 WhatsApp 群组引流，管理群组数据、客户跟进、财务记录、翻译服务等。
+
+## 用户规模
+6-50 人同时使用
+
+## 技术栈
+- **后端**: Node.js + Express.js（端口 3001）
+- **数据库**: SQLite + Prisma ORM（文件路径：`backend/prisma/crm.db`）
+- **前端**: React + Ant Design v5 + Vite（构建后由后端托管）
+- **实时通知**: Socket.io
+- **认证**: JWT + bcrypt
+
+## 目录结构
+```
+c:\CRM\
+├── backend/
+│   ├── src/
+│   │   ├── index.js              # 后端入口（端口 3001）
+│   │   ├── socket.js             # Socket.io 实时通知
+│   │   ├── middleware/
+│   │   │   ├── auth.js           # JWT 验证
+│   │   │   └── permission.js     # 角色权限（ROLE_WEIGHT, buildVisibilityFilter）
+│   │   └── routes/
+│   │       ├── auth.js
+│   │       ├── users.js          # 含 /translators 端点；主管/组长可管理下属
+│   │       ├── customers.js      # 支持 viewMode=mine/all；关联WA账号多对多
+│   │       ├── groups.js         # 支持 viewMode=mine/all
+│   │       ├── accounts.js       # WhatsApp 账号；支持 viewMode=mine/all
+│   │       ├── transactions.js   # 财务（含日期过滤/角色可见范围）
+│   │       ├── followups.js      # GET / 全量（权限过滤）；GET /customer/:id
+│   │       ├── translations.js   # 翻译（指定翻译员/全员推送）
+│   │       └── notifications.js  # 通知（含 customerId 关联，支持跳转）
+│   └── prisma/
+│       ├── schema.prisma
+│       ├── seed.js
+│       └── crm.db                # 数据库文件（所有数据在此）
+├── frontend/
+│   └── src/
+│       ├── api/index.js          # 所有 API 调用封装
+│       ├── store/auth.js         # 角色标签/权重常量
+│       └── pages/
+│           ├── Login/
+│           ├── Dashboard/
+│           ├── Customers/        # CustomerList + CustomerDetail
+│           ├── FollowUps/        # 全量跟进记录（按权限）；可展开查看详情
+│           ├── Groups/
+│           ├── Accounts/
+│           ├── Transactions/
+│           ├── Translations/
+│           ├── Notifications/
+│           └── Admin/            # 主管/组长可见（管理下属用户）
+├── start.bat                     # 生产启动（构建前端 + 启动后端）
+└── CLAUDE.md
+```
+
+## 角色权限体系
+| 角色 | 权重 | 说明 |
+|------|------|------|
+| SUPER_ADMIN | 6 | 超级管理员，看所有数据 |
+| ADMIN | 5 | 管理员，看所有数据 |
+| DEPT_MANAGER | 4 | 部门经理，看本部门 |
+| SUPERVISOR | 3 | 主管，看自己+团队；可新增/编辑组长和组员 |
+| TEAM_LEADER | 2 | 组长，看自己+下属；可新增/编辑组员；可看系统管理 |
+| MEMBER | 1 | 组员，只看自己 |
+| TRANSLATOR | 1 | 翻译，看所有客户；可点击查看客户详情/添加跟进记录 |
+
+- **viewMode=mine**（默认）：只看自己的数据（客户、群组、WhatsApp账号均支持）
+- **viewMode=all**：按角色权限范围显示
+
+## 重要规则
+- **用户不懂技术**，所有决定由 Claude 做出
+- **沟通语言**：中文
+- **代码注释**：中文或英文均可
+- SQLite 不支持 Prisma enum，所有枚举字段用 String 类型
+- 遇到问题先解决，不要问太多问题
+
+## 启动方式
+```
+# 生产（构建前端 + 启动后端）
+C:\CRM\start.bat
+
+# 如果 start.bat 失败，手动执行：
+cd C:\CRM\frontend && npm run build
+cd C:\CRM\backend && node src/index.js
+
+# 重新生成 Prisma 客户端（改 schema 后需要，先停止后端）：
+rm -f "C:\CRM\backend\node_modules\.prisma\client\query_engine-windows.dll.node"
+cd C:\CRM\backend && npx prisma generate
+cd C:\CRM\backend && npx prisma db push
+```
+
+## 常见问题
+- **Prisma DLL 锁定错误**（EPERM rename）：先停止后端，删除 DLL 文件，再 `prisma generate`
+- **服务器错误 500**：查看后端终端日志（已加 console.error），确认 Prisma 客户端是否需要重新生成
+- **团队数据显示为空**：检查 `api/index.js` 中对应 API 是否传递了 `params`
+
+## 超管账号（临时）
+- 用户名: superadmin
+- 密码: admin123456
+- **正式使用前必须修改密码！**
+
+## 数据模型要点
+- **Customer 与 WaAccount** 是多对多关系，通过 `CustomerWaAccount` 表（含 addedById 记录添加人）
+  - 旧的 `primaryWaAccountId` 已废弃，改用 `waAccountLinks`
+  - 每人只能关联自己的账号（后端校验 userId === req.user.id）
+- **CustomerWaAccount** 字段：customerId / waAccountId / addedById / createdAt
+- **续费提醒** 只发给账号所属人（reminder.js 中发送给 account.userId）
+
+## 当前进度（2026-02-28）
+- [x] 后端所有路由模块开发完成
+- [x] 前端所有页面开发完成
+- [x] WhatsApp 账号管理（搜索/续费/删除/mine-all视图切换）
+- [x] WhatsApp 群组管理（合并/类型属性/月度成本/mine-all视图切换）
+- [x] 客户管理（注册/实名字段/矿池授权/mine-all视图切换）
+- [x] 客户关联WA账号（多选；多对多 CustomerWaAccount 表；仅可关联自己的账号）
+- [x] 跟进记录板块（全量列表/按权限过滤/可展开/可跳转客户详情）
+- [x] 财务模块（BTC/ETH 手动 USD/月度筛选/角色可见范围）
+- [x] 翻译服务（指定翻译员/全员推送/翻译员可查看关联客户详情）
+- [x] 通知中心（点击跳转客户详情；所有通知均有已读按钮；翻译推送也可跳转）
+- [x] 用户管理（小组编号/改密码/删除；主管可管组长+组员；组长可管组员）
+- [x] 角色权限可见范围修复（viewMode 默认显示自己数据）
+- [x] Prisma 客户端同步（isRegistered/isRealName/CustomerWaAccount 均已生效）
+- [ ] 修改超管密码（正式使用前必须做）
+- [ ] 迁移到云服务器（用户已知晓需购买云服务器）

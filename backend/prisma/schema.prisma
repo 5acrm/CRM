@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 用户与组织 ====================
+// role: SUPER_ADMIN | ADMIN | DEPT_MANAGER | SUPERVISOR | TEAM_LEADER | MEMBER | TRANSLATOR
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  users     User[]
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique
+  email        String?    @unique
+  passwordHash String
+  role         String     // SUPER_ADMIN | ADMIN | DEPT_MANAGER | SUPERVISOR | TEAM_LEADER | MEMBER | TRANSLATOR
+  displayName  String?
+
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  superiorId   Int?
+  superior     User?      @relation("UserHierarchy", fields: [superiorId], references: [id])
+  subordinates User[]     @relation("UserHierarchy")
+
+  groupNumber  Int?       // 小组编号，如 1、2、3
+
+  isActive     Boolean    @default(true)
+  isHidden     Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  waAccounts           WaAccount[]
+  waGroups             WaGroup[]
+  createdCustomers     Customer[]              @relation("CustomerCreator")
+  followUpRecords      FollowUpRecord[]
+  followUpComments     FollowUpComment[]
+  commentResponses     CommentResponse[]
+  transactions         Transaction[]
+  translationRequests  TranslationTask[]       @relation("TaskRequester")
+  notifications        Notification[]
+  customerFollowers    CustomerFollower[]
+  customerGroupMoves   CustomerGroupHistory[]
+  customerWaLinks      CustomerWaAccount[]
+}
+
+// ==================== WhatsApp 账号 ====================
+// role: PROFESSOR | BIG_ASSISTANT | SMALL_ASSISTANT | WATER_ARMY | PLATFORM_TECH
+// region: DOMESTIC | OVERSEAS
+
+model WaAccount {
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id])
+
+  phoneNumber     String
+  nickname        String?
+  role            String    // PROFESSOR | BIG_ASSISTANT | SMALL_ASSISTANT | WATER_ARMY | PLATFORM_TECH
+  region          String    // DOMESTIC | OVERSEAS
+
+  renewalDate     DateTime?
+  banTime         DateTime?
+  banCount        Int       @default(0)
+  isPermanentBan  Boolean   @default(false)
+  isActive        Boolean   @default(true)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  followUpRecords   FollowUpRecord[]
+  customerFollowers CustomerFollower[]
+  customerLinks     CustomerWaAccount[]
+}
+
+// ==================== WhatsApp 群组 ====================
+
+model WaGroup {
+  id        Int      @id @default(autoincrement())
+  name      String
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  cost      Float    @default(3500)
+  groupType String?  // COMMUNITY | REGULAR (社区 | 普群)
+  groupAttr String?  // CRYPTO | STOCK (币 | 股)
+  isMerged  Boolean  @default(false)
+  mergedIntoId Int?
+  mergedInto   WaGroup?  @relation("GroupMerge", fields: [mergedIntoId], references: [id])
+  mergedGroups WaGroup[] @relation("GroupMerge")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  dailyStats     GroupDailyStat[]
+  customers      Customer[]
+  groupHistories CustomerGroupHistory[]
+}
+
+model GroupDailyStat {
+  id            Int      @id @default(autoincrement())
+  groupId       Int
+  group         WaGroup  @relation(fields: [groupId], references: [id])
+  date          DateTime
+
+  totalMembers  Int      @default(0)
+  realCustomers Int      @default(0)
+  ownAccounts   Int      @default(0)
+  dailyExits    Int      @default(0)
+  viewers       Int      @default(0)
+  inquiries     Int      @default(0)
+  conversions   Int      @default(0)
+  depositUsd    Float    @default(0)
+
+  createdAt     DateTime @default(now())
+
+  @@unique([groupId, date])
+}
+
+// ==================== 客户 ====================
+
+model Customer {
+  id                 Int       @id @default(autoincrement())
+  uid                String?   @unique
+  name               String
+  email              String?
+  phone              String?
+  hasMiningAuth       Boolean   @default(false)
+  miningWalletName    String?   // 授权矿池时的钱包名称
+  miningWalletAddress String?   // 授权矿池时的钱包地址
+  isRegistered        Boolean   @default(false) // 是否注册
+  isRealName          Boolean   @default(false) // 是否实名
+  followUpStatus      String?
+
+  currentGroupId     Int?
+  currentGroup       WaGroup?  @relation(fields: [currentGroupId], references: [id])
+
+  createdById        Int
+  createdBy          User      @relation("CustomerCreator", fields: [createdById], references: [id])
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  wallets            CustomerWallet[]
+  groupHistory       CustomerGroupHistory[]
+  followers          CustomerFollower[]
+  followUpRecords    FollowUpRecord[]
+  transactions       Transaction[]
+  translationTasks   TranslationTask[]
+  waAccountLinks     CustomerWaAccount[]
+}
+
+model CustomerWaAccount {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  waAccountId Int
+  waAccount   WaAccount @relation(fields: [waAccountId], references: [id])
+  addedById   Int
+  addedBy     User     @relation(fields: [addedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([customerId, waAccountId])
+}
+
+model CustomerWallet {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  currency   String   // BTC | ETH | USDT | USDC
+  address    String
+  createdAt  DateTime @default(now())
+}
+
+model CustomerGroupHistory {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  fromGroupId Int?
+  fromGroup   WaGroup? @relation(fields: [fromGroupId], references: [id])
+  toGroupId   Int?
+  movedById   Int
+  movedBy     User     @relation(fields: [movedById], references: [id])
+  movedAt     DateTime @default(now())
+}
+
+model CustomerFollower {
+  id          Int       @id @default(autoincrement())
+  customerId  Int
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  waAccountId Int?
+  waAccount   WaAccount? @relation(fields: [waAccountId], references: [id])
+  waRole      String?   // PROFESSOR | BIG_ASSISTANT | SMALL_ASSISTANT | WATER_ARMY | PLATFORM_TECH
+  createdAt   DateTime  @default(now())
+
+  @@unique([customerId, userId])
+}
+
+// ==================== 跟进记录 ====================
+// contactType: TEXT | CALL | VIDEO
+
+model FollowUpRecord {
+  id          Int       @id @default(autoincrement())
+  customerId  Int
+  customer    Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  waAccountId Int?
+  waAccount   WaAccount? @relation(fields: [waAccountId], references: [id])
+  waRole      String?   // WhatsApp角色
+  contactType String    @default("TEXT") // TEXT | CALL | VIDEO
+  content     String
+  createdAt   DateTime  @default(now())
+
+  comments    FollowUpComment[]
+}
+
+model FollowUpComment {
+  id        Int            @id @default(autoincrement())
+  recordId  Int
+  record    FollowUpRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User           @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime       @default(now())
+
+  responses CommentResponse[]
+}
+
+model CommentResponse {
+  id        Int             @id @default(autoincrement())
+  commentId Int
+  comment   FollowUpComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User            @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime        @default(now())
+}
+
+// ==================== 财务 ====================
+// type: DEPOSIT | WITHDRAWAL
+// currency: BTC | ETH | USDT | USDC
+
+model Transaction {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id])
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id])
+  type       String   // DEPOSIT | WITHDRAWAL
+  currency   String   // BTC | ETH | USDT | USDC
+  amount     Float
+  usdAmount  Float
+  rateAtTime Float
+  note       String?
+  recordedAt DateTime @default(now())
+}
+
+model CryptoRate {
+  id       Int      @id @default(autoincrement())
+  currency String
+  usdRate  Float
+  date     DateTime
+
+  @@unique([currency, date])
+}
+
+// ==================== 翻译任务 ====================
+// status: PENDING | COMPLETED
+
+model TranslationTask {
+  id          Int       @id @default(autoincrement())
+  requesterId Int
+  requester   User      @relation("TaskRequester", fields: [requesterId], references: [id])
+  customerId  Int?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  content     String
+  result      String?
+  status      String    @default("PENDING") // PENDING | COMPLETED
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+// ==================== 通知 ====================
+// type: RENEWAL_REMINDER | SUPERVISOR_COMMENT | LEADER_COMMENT | COMMENT_RESPONSE | TRANSLATION_DONE | TRANSLATION_PUSH
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  type      String   // 通知类型
+  title     String
+  content   String
+  relatedId Int?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
