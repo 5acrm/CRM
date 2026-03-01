@@ -5,7 +5,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { initSocket } = require('./socket');
 const { scheduleRenewalReminders } = require('./services/reminder');
-const { execSync } = require('child_process');
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
@@ -63,10 +62,6 @@ if (fs.existsSync(frontendDist)) {
 scheduleRenewalReminders(io);
 
 async function bootstrap() {
-  // 初始化数据库表结构
-  console.log('正在初始化数据库...');
-  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
-
   // 自动创建 superadmin（如果不存在）
   const prisma = new PrismaClient();
   try {
