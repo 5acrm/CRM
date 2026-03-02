@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { execSync } = require('child_process');
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
@@ -68,6 +69,11 @@ if (fs.existsSync(frontendDist)) {
 scheduleRenewalReminders(io);
 
 async function bootstrap() {
+  // 自动同步数据库 schema
+  console.log('正在同步数据库 schema...');
+  execSync('npx prisma db push --accept-data-loss', { stdio: 'inherit' });
+  console.log('数据库 schema 同步完成。');
+
   // 自动创建 superadmin（如果不存在）
   const prisma = new PrismaClient();
   try {
