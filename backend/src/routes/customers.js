@@ -9,7 +9,7 @@ const router = express.Router();
 // 搜索/列表客户（viewMode: 'mine'=只看自己, 'all'=按角色可见）
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { keyword, uid, groupId, assignedUserId, hasDeposit, followUpStatus, viewMode = 'mine', page = 1, pageSize = 20 } = req.query;
+    const { keyword, uid, groupId, assignedUserId, hasDeposit, followUpStatus, groupNumber, viewMode = 'mine', page = 1, pageSize = 20 } = req.query;
     const where = viewMode === 'mine'
       ? { createdById: req.user.id }
       : { ...buildVisibilityFilter(req.user) };
@@ -30,6 +30,14 @@ router.get('/', authenticate, async (req, res) => {
     } else if (hasDeposit === 'false') {
       where.transactions = { none: { type: 'DEPOSIT' } };
     }
+    // 按小组编号筛选
+    if (groupNumber) {
+      const groupUsers = await prisma.user.findMany({
+        where: { groupNumber: parseInt(groupNumber), isHidden: false },
+        select: { id: true }
+      });
+      where.createdById = { in: groupUsers.map(u => u.id) };
+    }
 
     const total = await prisma.customer.count({ where });
     const customers = await prisma.customer.findMany({
@@ -47,6 +55,7 @@ router.get('/', authenticate, async (req, res) => {
           }
         },
         wallets: true,
+        followUpRecords: { orderBy: { createdAt: 'desc' }, take: 1, select: { content: true, createdAt: true } },
         _count: { select: { transactions: true, followUpRecords: true } }
       },
       orderBy: [{ isStarred: 'desc' }, { createdAt: 'desc' }],
@@ -116,7 +125,8 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { name, uid, email, phone, hasMiningAuth, miningWalletName, miningWalletAddress,
-            isRegistered, isRealName, isStarred, currentGroupId, waAccountIds, followUpStatus, wallets } = req.body;
+            isRegistered, isRealName, isStarred, currentGroupId, waAccountIds, followUpStatus, wallets,
+            usState, usCity, timezone, remark } = req.body;
     if (!phone) return res.status(400).json({ message: '电话号码为必填项' });
 
     if (phone) {
@@ -136,6 +146,10 @@ router.post('/', authenticate, async (req, res) => {
         isRealName: isRealName || false,
         isStarred: isStarred || false,
         followUpStatus,
+        usState: usState || null,
+        usCity: usCity || null,
+        timezone: timezone || null,
+        remark: remark || null,
         currentGroupId: currentGroupId ? parseInt(currentGroupId) : null,
         createdById: req.user.id,
         wallets: wallets ? {
@@ -172,7 +186,8 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, uid, email, phone, hasMiningAuth, miningWalletName, miningWalletAddress,
-            isRegistered, isRealName, isStarred, waAccountIds, followUpStatus } = req.body;
+            isRegistered, isRealName, isStarred, waAccountIds, followUpStatus,
+            usState, usCity, timezone, remark, createdById } = req.body;
 
     if (phone) {
       if (!/^\d+$/.test(phone)) return res.status(400).json({ message: '电话号码只能包含数字' });
@@ -180,21 +195,32 @@ router.put('/:id', authenticate, async (req, res) => {
       if (phoneExists) return res.status(400).json({ message: '该电话号码已被其他客户使用' });
     }
 
+    // 仅组长及以上可更改负责人
+    const updateData = {
+      name: name || undefined,
+      uid: uid !== undefined ? (uid || null) : undefined,
+      email: email !== undefined ? (email || null) : undefined,
+      phone: phone !== undefined ? (phone || null) : undefined,
+      hasMiningAuth: hasMiningAuth !== undefined ? hasMiningAuth : undefined,
+      miningWalletName: hasMiningAuth ? (miningWalletName || null) : null,
+      miningWalletAddress: hasMiningAuth ? (miningWalletAddress || null) : null,
+      isRegistered: isRegistered !== undefined ? isRegistered : undefined,
+      isRealName: isRealName !== undefined ? isRealName : undefined,
+      isStarred: isStarred !== undefined ? isStarred : undefined,
+      followUpStatus: followUpStatus !== undefined ? (followUpStatus || null) : undefined,
+      usState: usState !== undefined ? (usState || null) : undefined,
+      usCity: usCity !== undefined ? (usCity || null) : undefined,
+      timezone: timezone !== undefined ? (timezone || null) : undefined,
+      remark: remark !== undefined ? (remark || null) : undefined
+    };
+
+    if (createdById !== undefined && ROLE_WEIGHT[req.user.role] >= ROLE_WEIGHT['TEAM_LEADER']) {
+      updateData.createdById = parseInt(createdById);
+    }
+
     const updated = await prisma.customer.update({
       where: { id },
-      data: {
-        name: name || undefined,
-        uid: uid !== undefined ? (uid || null) : undefined,
-        email: email !== undefined ? (email || null) : undefined,
-        phone: phone !== undefined ? (phone || null) : undefined,
-        hasMiningAuth: hasMiningAuth !== undefined ? hasMiningAuth : undefined,
-        miningWalletName: hasMiningAuth ? (miningWalletName || null) : null,
-        miningWalletAddress: hasMiningAuth ? (miningWalletAddress || null) : null,
-        isRegistered: isRegistered !== undefined ? isRegistered : undefined,
-        isRealName: isRealName !== undefined ? isRealName : undefined,
-        isStarred: isStarred !== undefined ? isStarred : undefined,
-        followUpStatus: followUpStatus !== undefined ? (followUpStatus || null) : undefined
-      },
+      data: updateData,
       include: { currentGroup: true, wallets: true }
     });
 

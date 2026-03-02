@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Row, Col, Statistic, Table, Tag, Space, Typography, message } from 'antd'
-import { TeamOutlined, DollarOutlined, AppstoreOutlined, MobileOutlined, WarningOutlined } from '@ant-design/icons'
+import { Card, Row, Col, Statistic, Table, Tag, Space, Typography, message, Button } from 'antd'
+import { TeamOutlined, AppstoreOutlined, WarningOutlined, UserOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { transactionApi, groupApi, accountApi, customerApi } from '../../api'
-import useAuthStore from '../../store/auth'
+import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
 
 const { Title, Text } = Typography
 
@@ -14,13 +14,18 @@ export default function Dashboard() {
   const [expiring, setExpiring] = useState([])
   const [customerCount, setCustomerCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [viewMode, setViewMode] = useState('mine')
 
-  useEffect(() => {
+  const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+
+  const load = (mode) => {
+    const vm = mode || viewMode
+    setLoading(true)
     Promise.all([
-      transactionApi.stats(),
-      groupApi.list(),
+      transactionApi.stats({ viewMode: vm }),
+      groupApi.list({ viewMode: vm }),
       accountApi.expiring(),
-      customerApi.list({ pageSize: 1 })
+      customerApi.list({ pageSize: 1, viewMode: vm })
     ]).then(([s, g, exp, c]) => {
       setStats(s)
       setGroups(g.slice(0, 5))
@@ -28,7 +33,14 @@ export default function Dashboard() {
       setCustomerCount(c.total || 0)
     }).catch(() => message.error('加载失败'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
+
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode)
+    load(mode)
+  }
 
   const expiringColumns = [
     { title: '账号', render: (_, r) => r.nickname || r.phoneNumber },
@@ -48,9 +60,25 @@ export default function Dashboard() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Title level={4} style={{ marginBottom: 24 }}>
-        欢迎回来，{user.displayName || user.username} 👋
-      </Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={4} style={{ margin: 0 }}>
+          欢迎回来，{user.displayName || user.username}
+        </Title>
+        {canViewTeam && (
+          <Button.Group>
+            <Button
+              type={viewMode === 'mine' ? 'primary' : 'default'}
+              icon={<UserOutlined />}
+              onClick={() => handleViewModeChange('mine')}
+            >个人数据</Button>
+            <Button
+              type={viewMode === 'all' ? 'primary' : 'default'}
+              icon={<TeamOutlined />}
+              onClick={() => handleViewModeChange('all')}
+            >团队数据</Button>
+          </Button.Group>
+        )}
+      </div>
 
       {/* 统计卡片 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>

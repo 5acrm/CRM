@@ -13,7 +13,7 @@ const GROUP_ATTR_LABELS = { CRYPTO: '币', STOCK: '股' };
 // 获取群组列表（viewMode: 'mine'=只看自己, 'all'=按角色可见）
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { viewMode = 'mine' } = req.query;
+    const { viewMode = 'mine', keyword, startDate, endDate, groupNumber } = req.query;
     let where = {};
 
     if (viewMode === 'mine') {
@@ -39,6 +39,29 @@ router.get('/', authenticate, async (req, res) => {
       }
     }
 
+    // 关键词搜索
+    if (keyword) {
+      where.name = { contains: keyword, mode: 'insensitive' };
+    }
+    // 日期范围筛选
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(startDate);
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+    // 按小组编号筛选
+    if (groupNumber) {
+      const groupUsers = await prisma.user.findMany({
+        where: { groupNumber: parseInt(groupNumber), isHidden: false },
+        select: { id: true }
+      });
+      where.userId = { in: groupUsers.map(u => u.id) };
+    }
+
     const groups = await prisma.waGroup.findMany({
       where,
       include: {
@@ -57,7 +80,7 @@ router.get('/', authenticate, async (req, res) => {
 // 创建群组
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, cost, groupType, groupAttr, createdDate } = req.body;
+    const { name, cost, groupType, groupAttr, createdDate, remark } = req.body;
     if (!name) return res.status(400).json({ message: '群组名称为必填项' });
 
     const data = {
@@ -65,7 +88,8 @@ router.post('/', authenticate, async (req, res) => {
       userId: req.user.id,
       cost: cost ? parseFloat(cost) : 3500,
       groupType: groupType || null,
-      groupAttr: groupAttr || null
+      groupAttr: groupAttr || null,
+      remark: remark || null
     };
     if (createdDate) {
       data.createdAt = new Date(createdDate);
@@ -123,7 +147,7 @@ router.put('/:id', authenticate, async (req, res) => {
       return res.status(403).json({ message: '权限不足' });
     }
 
-    const { name, cost, isActive, groupType, groupAttr } = req.body;
+    const { name, cost, isActive, groupType, groupAttr, remark } = req.body;
 
     // 仅组长及以上角色可修改群成本
     if (cost !== undefined && cost !== null && cost !== group.cost) {
@@ -140,7 +164,8 @@ router.put('/:id', authenticate, async (req, res) => {
         cost: cost !== undefined && cost !== null ? parseFloat(cost) : undefined,
         isActive,
         groupType: groupType !== undefined ? groupType : undefined,
-        groupAttr: groupAttr !== undefined ? groupAttr : undefined
+        groupAttr: groupAttr !== undefined ? groupAttr : undefined,
+        remark: remark !== undefined ? (remark || null) : undefined
       }
     });
     logActivity({ userId: req.user.id, action: 'UPDATE', targetType: 'GROUP', targetId: parseInt(req.params.id), targetName: updated.name, details: req.body });

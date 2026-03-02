@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react'
-import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message } from 'antd'
-import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined } from '@ant-design/icons'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message, Tooltip } from 'antd'
+import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { groupApi } from '../../api'
+import { groupApi, userApi } from '../../api'
 import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
 
 const { Option } = Select
+const { RangePicker } = DatePicker
 
 const GROUP_TYPE_LABELS = { COMMUNITY: '社区', REGULAR: '普群' }
 const GROUP_ATTR_LABELS = { CRYPTO: '币', STOCK: '股' }
@@ -17,6 +18,7 @@ export default function GroupsPage() {
   const [viewMode, setViewMode] = useState('mine')
   const [createModal, setCreateModal] = useState(false)
   const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+  const canFilterGroup = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['SUPERVISOR']
   const [editModal, setEditModal] = useState({ open: false, group: null })
   const [editForm] = Form.useForm()
   const [mergeModal, setMergeModal] = useState({ open: false, group: null })
@@ -31,9 +33,40 @@ export default function GroupsPage() {
   const [mergeForm] = Form.useForm()
   const canEditCost = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
 
+  // 搜索状态
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchDateRange, setSearchDateRange] = useState(null)
+  const [searchGroupNumber, setSearchGroupNumber] = useState(undefined)
+  const [subordinates, setSubordinates] = useState([])
+
+  // 提取可用小组编号
+  const groupNumbers = useMemo(() => {
+    const nums = [...new Set(subordinates.filter(u => u.groupNumber).map(u => u.groupNumber))].sort((a, b) => a - b)
+    return nums
+  }, [subordinates])
+
+  // 汇总统计（排除已合并群组）
+  const summaryStats = useMemo(() => {
+    const active = groups.filter(g => !g.isMerged)
+    return {
+      totalGroups: active.length,
+      totalCost: active.reduce((sum, g) => sum + (g.cost || 0), 0),
+      totalCustomers: active.reduce((sum, g) => sum + (g._count?.customers || 0), 0)
+    }
+  }, [groups])
+
+  useEffect(() => {
+    if (canFilterGroup) userApi.subordinates().then(setSubordinates).catch(() => {})
+  }, [])
+
   const load = () => {
     setLoading(true)
-    groupApi.list({ viewMode }).then(setGroups).catch(() => message.error('加载失败')).finally(() => setLoading(false))
+    const params = { viewMode }
+    if (searchKeyword) params.keyword = searchKeyword
+    if (searchDateRange && searchDateRange[0]) params.startDate = searchDateRange[0].startOf('day').toISOString()
+    if (searchDateRange && searchDateRange[1]) params.endDate = searchDateRange[1].endOf('day').toISOString()
+    if (searchGroupNumber) params.groupNumber = searchGroupNumber
+    groupApi.list(params).then(setGroups).catch(() => message.error('加载失败')).finally(() => setLoading(false))
   }
 
   useEffect(() => { load() }, [viewMode])
@@ -43,6 +76,16 @@ export default function GroupsPage() {
       setMissingStatsIds(new Set(data.map(g => g.id)))
     }).catch(() => {})
   }, [])
+
+  const handleSearch = () => { load() }
+  const handleResetSearch = () => {
+    setSearchKeyword('')
+    setSearchDateRange(null)
+    setSearchGroupNumber(undefined)
+    // 重新加载不带筛选条件
+    setLoading(true)
+    groupApi.list({ viewMode }).then(setGroups).catch(() => message.error('加载失败')).finally(() => setLoading(false))
+  }
 
   const handleCreate = async (vals) => {
     try {
@@ -65,7 +108,8 @@ export default function GroupsPage() {
       cost: group.cost,
       groupType: group.groupType || undefined,
       groupAttr: group.groupAttr || undefined,
-      isActive: group.isActive
+      isActive: group.isActive,
+      remark: group.remark || ''
     })
   }
 
@@ -144,6 +188,7 @@ export default function GroupsPage() {
     },
     {
       title: '类型/属性',
+      width: 80,
       render: (_, r) => (
         <Space size={4}>
           {r.groupType && <Tag color="blue">{GROUP_TYPE_LABELS[r.groupType] || r.groupType}</Tag>}
@@ -151,18 +196,28 @@ export default function GroupsPage() {
         </Space>
       )
     },
-    { title: '负责人', dataIndex: 'user', render: u => u?.displayName || '-' },
-    { title: '月成本', dataIndex: 'cost', render: v => `$${v?.toFixed(0)}/月` },
-    { title: '客户数量', dataIndex: '_count', render: c => c?.customers || 0 },
+    { title: '负责人', dataIndex: 'user', width: 70, render: u => u?.displayName || '-' },
+    { title: '月成本', dataIndex: 'cost', width: 80, render: v => `$${v?.toFixed(0)}/月` },
+    { title: '客户数', dataIndex: '_count', width: 70, render: c => c?.customers || 0 },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      width: 150,
+      ellipsis: true,
+      render: v => v ? <Tooltip title={v}><span>{v}</span></Tooltip> : '-'
+    },
     {
       title: '状态',
+      width: 60,
       render: (_, r) => r.isMerged
         ? <Tag color="default">已合并</Tag>
         : r.isActive ? <Tag color="green">活跃</Tag> : <Tag>已停用</Tag>
     },
-    { title: '创建时间', dataIndex: 'createdAt', render: v => dayjs(v).format('YYYY-MM-DD') },
+    { title: '创建时间', dataIndex: 'createdAt', width: 100, render: v => dayjs(v).format('YYYY-MM-DD') },
     {
       title: '操作',
+      width: 180,
+      fixed: 'right',
       render: (_, r) => (
         <Space>
           <Button size="small" icon={<BarChartOutlined />} onClick={() => openStats(r)}>数据</Button>
@@ -208,6 +263,53 @@ export default function GroupsPage() {
           </Space>
         </Card>
       )}
+
+      {/* 搜索栏 */}
+      <Card size="small" style={{ marginBottom: 12 }}>
+        <Space wrap>
+          <Input
+            placeholder="群组名称"
+            prefix={<SearchOutlined />}
+            allowClear
+            value={searchKeyword}
+            onChange={e => setSearchKeyword(e.target.value)}
+            style={{ width: 180 }}
+            onPressEnter={handleSearch}
+          />
+          <RangePicker
+            value={searchDateRange}
+            onChange={setSearchDateRange}
+            placeholder={['开始日期', '结束日期']}
+          />
+          {viewMode === 'all' && canFilterGroup && groupNumbers.length > 0 && (
+            <Select
+              placeholder="小组"
+              allowClear
+              value={searchGroupNumber}
+              onChange={setSearchGroupNumber}
+              style={{ width: 90 }}
+            >
+              {groupNumbers.map(n => <Option key={n} value={n}>{n}组</Option>)}
+            </Select>
+          )}
+          <Button type="primary" onClick={handleSearch}>搜索</Button>
+          <Button onClick={handleResetSearch}>重置</Button>
+        </Space>
+      </Card>
+
+      {/* 汇总统计 */}
+      <Row gutter={16} style={{ marginBottom: 12 }}>
+        <Col span={8}>
+          <Card size="small"><Statistic title="活跃群组" value={summaryStats.totalGroups} /></Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small"><Statistic title="总月成本" value={summaryStats.totalCost} prefix="$" precision={0} valueStyle={{ color: '#cf1322' }} /></Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small"><Statistic title="总客户数" value={summaryStats.totalCustomers} /></Card>
+        </Col>
+      </Row>
+
       <Card
         title="群组管理"
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>新建群组</Button>}
@@ -217,6 +319,7 @@ export default function GroupsPage() {
           dataSource={groups}
           rowKey="id"
           loading={loading}
+          scroll={{ x: 1000 }}
           rowClassName={r => r.isMerged ? 'row-disabled' : ''}
         />
       </Card>
@@ -242,6 +345,9 @@ export default function GroupsPage() {
           </Form.Item>
           <Form.Item name="cost" label="月成本 (USD/月)" initialValue={3500}>
             <InputNumber min={0} style={{ width: '100%' }} prefix="$" disabled={!canEditCost} />
+          </Form.Item>
+          <Form.Item name="remark" label="备注">
+            <Input.TextArea rows={2} placeholder="群组备注" maxLength={500} />
           </Form.Item>
           <Form.Item>
             <Space>
@@ -276,6 +382,9 @@ export default function GroupsPage() {
               <Option value={true}>活跃</Option>
               <Option value={false}>已停用</Option>
             </Select>
+          </Form.Item>
+          <Form.Item name="remark" label="备注">
+            <Input.TextArea rows={2} placeholder="群组备注" maxLength={500} />
           </Form.Item>
           <Form.Item>
             <Space>

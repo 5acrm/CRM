@@ -65,7 +65,7 @@ export default function MainLayout() {
     )},
     { key: '/todos', icon: <CheckSquareOutlined />, label: '待办事项' },
     { key: '/marketing', icon: <BulbOutlined />, label: '营销智库' },
-    ...(canAdmin ? [{ key: '/activity-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
+    ...(user.role === 'SUPER_ADMIN' ? [{ key: '/activity-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
     ...(canAdmin ? [{ key: '/admin', icon: <SettingOutlined />, label: '系统管理' }] : [])
   ]
 

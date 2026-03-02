@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Statistic, Row, Col, DatePicker, message } from 'antd'
-import { PlusOutlined } from '@ant-design/icons'
+import { PlusOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { transactionApi, customerApi } from '../../api'
+import { transactionApi, customerApi, userApi } from '../../api'
 import { CURRENCY_LABELS } from '../../store/auth'
-import useAuthStore from '../../store/auth'
+import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
 
 const { Option } = Select
 const { RangePicker } = DatePicker
@@ -19,15 +19,37 @@ export default function TransactionsPage() {
   const [form] = Form.useForm()
   const [customers, setCustomers] = useState([])
   const [selectedCurrency, setSelectedCurrency] = useState(null)
+  const [viewMode, setViewMode] = useState('mine')
+  const [subordinates, setSubordinates] = useState([])
+  const [filterGroupNumber, setFilterGroupNumber] = useState(undefined)
+  const [filterUserId, setFilterUserId] = useState(undefined)
+
+  const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+  const canFilterGroup = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['SUPERVISOR']
+
+  // 提取可用小组编号
+  const groupNumbers = useMemo(() => {
+    const nums = [...new Set(subordinates.filter(u => u.groupNumber).map(u => u.groupNumber))].sort((a, b) => a - b)
+    return nums
+  }, [subordinates])
 
   // 默认当月范围
   const [dateRange, setDateRange] = useState([dayjs().startOf('month'), dayjs().endOf('day')])
 
-  const load = (range) => {
-    const r = range || dateRange
-    const params = {}
+  useEffect(() => {
+    if (canViewTeam) userApi.subordinates().then(setSubordinates).catch(() => {})
+  }, [])
+
+  const load = (range, mode, gn, uid) => {
+    const r = range !== undefined ? range : dateRange
+    const vm = mode || viewMode
+    const params = { viewMode: vm }
     if (r && r[0]) params.startDate = r[0].startOf('day').toISOString()
     if (r && r[1]) params.endDate = r[1].endOf('day').toISOString()
+    const gnVal = gn !== undefined ? gn : filterGroupNumber
+    const uidVal = uid !== undefined ? uid : filterUserId
+    if (gnVal) params.groupNumber = gnVal
+    if (uidVal) params.assignedUserId = uidVal
 
     setLoading(true)
     Promise.all([
@@ -48,6 +70,13 @@ export default function TransactionsPage() {
   }
 
   useEffect(() => { load() }, [])
+
+  const handleViewModeChange = (mode) => {
+    setViewMode(mode)
+    setFilterGroupNumber(undefined)
+    setFilterUserId(undefined)
+    load(undefined, mode, undefined, undefined)
+  }
 
   const handleCreate = async (vals) => {
     try {
@@ -87,9 +116,19 @@ export default function TransactionsPage() {
         </Space>
       </Card>
 
-      {/* 时间筛选 */}
+      {/* 视图切换 + 筛选 */}
       <Card size="small" style={{ marginBottom: 16 }}>
-        <Space>
+        <Space wrap>
+          {canViewTeam && (
+            <>
+              <span style={{ color: '#666' }}>数据范围：</span>
+              <Button.Group>
+                <Button type={viewMode === 'mine' ? 'primary' : 'default'} icon={<UserOutlined />} onClick={() => handleViewModeChange('mine')}>个人</Button>
+                <Button type={viewMode === 'all' ? 'primary' : 'default'} icon={<TeamOutlined />} onClick={() => handleViewModeChange('all')}>团队</Button>
+              </Button.Group>
+              <span style={{ borderLeft: '1px solid #d9d9d9', height: 20, margin: '0 4px' }} />
+            </>
+          )}
           <span>时间范围：</span>
           <RangePicker
             value={dateRange}
@@ -102,6 +141,30 @@ export default function TransactionsPage() {
             ]}
           />
           <Button onClick={() => { setDateRange(null); load([null, null]) }}>全部</Button>
+          {viewMode === 'all' && canFilterGroup && groupNumbers.length > 0 && (
+            <Select
+              placeholder="小组"
+              allowClear
+              value={filterGroupNumber}
+              onChange={val => { setFilterGroupNumber(val); setFilterUserId(undefined); load(undefined, undefined, val, undefined) }}
+              style={{ width: 90 }}
+            >
+              {groupNumbers.map(n => <Option key={n} value={n}>{n}组</Option>)}
+            </Select>
+          )}
+          {viewMode === 'all' && canViewTeam && subordinates.length > 0 && (
+            <Select
+              placeholder="负责人"
+              allowClear
+              value={filterUserId}
+              onChange={val => { setFilterUserId(val); load(undefined, undefined, undefined, val) }}
+              style={{ width: 120 }}
+              showSearch
+              filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+            >
+              {subordinates.map(u => <Option key={u.id} value={u.id}>{u.displayName || u.username}</Option>)}
+            </Select>
+          )}
         </Space>
       </Card>
 

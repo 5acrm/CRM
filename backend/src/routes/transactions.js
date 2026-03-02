@@ -27,10 +27,10 @@ async function getVisibleUserIds(user) {
   return [user.id];
 }
 
-// 获取交易记录
+// 获取交易记录（支持 viewMode + groupNumber + assignedUserId 筛选）
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { customerId, type, currency, startDate, endDate, page = 1, pageSize = 20 } = req.query;
+    const { customerId, type, currency, startDate, endDate, viewMode = 'all', groupNumber, assignedUserId, page = 1, pageSize = 20 } = req.query;
     const where = {};
 
     if (customerId) where.customerId = parseInt(customerId);
@@ -42,8 +42,21 @@ router.get('/', authenticate, async (req, res) => {
       if (endDate) where.recordedAt.lte = new Date(endDate);
     }
 
-    const visibleIds = await getVisibleUserIds(req.user);
-    if (visibleIds !== null) where.userId = { in: visibleIds };
+    if (viewMode === 'mine') {
+      where.userId = req.user.id;
+    } else if (assignedUserId) {
+      where.userId = parseInt(assignedUserId);
+    } else if (groupNumber) {
+      // 按小组编号筛选：找到该小组的所有用户
+      const groupUsers = await prisma.user.findMany({
+        where: { groupNumber: parseInt(groupNumber), isHidden: false },
+        select: { id: true }
+      });
+      where.userId = { in: groupUsers.map(u => u.id) };
+    } else {
+      const visibleIds = await getVisibleUserIds(req.user);
+      if (visibleIds !== null) where.userId = { in: visibleIds };
+    }
 
     const total = await prisma.transaction.count({ where });
     const records = await prisma.transaction.findMany({
@@ -107,10 +120,73 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// 统计数据（自动按角色过滤，支持日期范围）
+// 修改交易记录
+router.put('/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await prisma.transaction.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ message: '记录不存在' });
+
+    const { type, currency, amount, note, recordedAt, usdAmount: manualUsdAmount } = req.body;
+
+    let rate = existing.rateAtTime;
+    let usdAmount = existing.usdAmount;
+    const finalCurrency = currency || existing.currency;
+    const finalAmount = amount !== undefined ? parseFloat(amount) : existing.amount;
+
+    if (amount !== undefined || currency || manualUsdAmount !== undefined) {
+      if (['BTC', 'ETH'].includes(finalCurrency)) {
+        if (manualUsdAmount !== undefined && manualUsdAmount !== null && manualUsdAmount !== '') {
+          usdAmount = parseFloat(manualUsdAmount);
+          rate = finalAmount > 0 ? usdAmount / finalAmount : 0;
+        } else {
+          rate = await getCryptoRate(finalCurrency);
+          usdAmount = finalAmount * rate;
+        }
+      } else {
+        usdAmount = finalAmount;
+        rate = 1;
+      }
+    }
+
+    const updated = await prisma.transaction.update({
+      where: { id },
+      data: {
+        type: type || undefined,
+        currency: currency || undefined,
+        amount: amount !== undefined ? finalAmount : undefined,
+        usdAmount,
+        rateAtTime: rate,
+        note: note !== undefined ? note : undefined,
+        recordedAt: recordedAt ? new Date(recordedAt) : undefined
+      },
+      include: { customer: { select: { id: true, name: true } } }
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
+// 删除交易记录
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const existing = await prisma.transaction.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ message: '记录不存在' });
+    await prisma.transaction.delete({ where: { id } });
+    res.json({ message: '删除成功' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
+// 统计数据（支持 viewMode + groupNumber + assignedUserId 筛选）
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const { userId, startDate, endDate } = req.query;
+    const { userId, startDate, endDate, viewMode = 'all', groupNumber, assignedUserId } = req.query;
     const where = {};
 
     if (startDate || endDate) {
@@ -119,8 +195,18 @@ router.get('/stats', authenticate, async (req, res) => {
       if (endDate) where.recordedAt.lte = new Date(endDate);
     }
 
-    if (userId) {
+    if (viewMode === 'mine') {
+      where.userId = req.user.id;
+    } else if (userId) {
       where.userId = parseInt(userId);
+    } else if (assignedUserId) {
+      where.userId = parseInt(assignedUserId);
+    } else if (groupNumber) {
+      const groupUsers = await prisma.user.findMany({
+        where: { groupNumber: parseInt(groupNumber), isHidden: false },
+        select: { id: true }
+      });
+      where.userId = { in: groupUsers.map(u => u.id) };
     } else {
       const visibleIds = await getVisibleUserIds(req.user);
       if (visibleIds !== null) where.userId = { in: visibleIds };

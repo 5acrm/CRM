@@ -6,11 +6,10 @@ const router = express.Router();
 
 const ROLE_WEIGHT = { MEMBER: 1, TRANSLATOR: 1, TEAM_LEADER: 2, SUPERVISOR: 3, DEPT_MANAGER: 4, ADMIN: 5, SUPER_ADMIN: 6 };
 
-// GET / - 操作日志列表（组长及以上可查看）
+// GET / - 操作日志列表（仅超级管理员可查看）
 router.get('/', authenticate, async (req, res) => {
   try {
-    // 仅组长及以上可查看
-    if (ROLE_WEIGHT[req.user.role] < ROLE_WEIGHT['TEAM_LEADER']) {
+    if (req.user.role !== 'SUPER_ADMIN') {
       return res.status(403).json({ message: '权限不足' });
     }
 

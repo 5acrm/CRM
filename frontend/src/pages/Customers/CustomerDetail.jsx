@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card, Tabs, Descriptions, Tag, Button, Space, Modal, Form, Input, Select,
-  Timeline, List, Avatar, Typography, Divider, Row, Col, Statistic, message,
-  Badge, Tooltip, Table, DatePicker
+  List, Typography, Row, Col, Statistic, message,
+  Badge, Table, DatePicker, Popconfirm
 } from 'antd'
 import {
   ArrowLeftOutlined, EditOutlined, PlusOutlined, MessageOutlined,
   PhoneOutlined, VideoCameraOutlined, SwapOutlined, UserOutlined,
-  StarFilled, StarOutlined, BellOutlined
+  StarFilled, StarOutlined, BellOutlined, DeleteOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { customerApi, followUpApi, transactionApi, groupApi, accountApi } from '../../api'
+import { customerApi, followUpApi, transactionApi, groupApi, accountApi, userApi } from '../../api'
 import useAuthStore, { WA_ROLE_LABELS, CONTACT_TYPE_LABELS, ROLE_WEIGHT, CURRENCY_LABELS } from '../../store/auth'
+import US_STATES, { TIMEZONE_LABELS } from '../../data/usStates'
 
 const { Option } = Select
 const { TextArea } = Input
@@ -31,6 +32,7 @@ export default function CustomerDetail() {
   const [groups, setGroups] = useState([])
   const [myAccounts, setMyAccounts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [subordinates, setSubordinates] = useState([])
 
   // 模态框状态
   const [followUpModal, setFollowUpModal] = useState(false)
@@ -38,17 +40,28 @@ export default function CustomerDetail() {
   const [moveModal, setMoveModal] = useState(false)
   const [txModal, setTxModal] = useState(false)
   const [editModal, setEditModal] = useState(false)
+  const [txEditModal, setTxEditModal] = useState({ open: false, record: null })
 
   const [followUpForm] = Form.useForm()
   const [commentForm] = Form.useForm()
   const [moveForm] = Form.useForm()
   const [txForm] = Form.useForm()
   const [editForm] = Form.useForm()
+  const [txEditForm] = Form.useForm()
   const [reminderModal, setReminderModal] = useState(false)
   const [reminderForm] = Form.useForm()
 
+  const [editSelectedState, setEditSelectedState] = useState(null)
+
   const canMoveCustomer = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
   const canComment = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+  const canChangeOwner = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+
+  const editCitiesForState = useMemo(() => {
+    if (!editSelectedState) return []
+    const state = US_STATES.find(s => s.code === editSelectedState)
+    return state ? state.cities : []
+  }, [editSelectedState])
 
   const load = () => {
     Promise.all([
@@ -57,14 +70,16 @@ export default function CustomerDetail() {
       transactionApi.list({ customerId: id }),
       customerApi.financeSummary(id),
       groupApi.list(),
-      accountApi.mine()
-    ]).then(([c, f, tx, fs, g, acc]) => {
+      accountApi.mine(),
+      canChangeOwner ? userApi.subordinates() : Promise.resolve([])
+    ]).then(([c, f, tx, fs, g, acc, subs]) => {
       setCustomer(c)
       setFollowUps(f)
       setTransactions(tx.data || [])
       setFinanceSummary(fs)
       setGroups(g)
       setMyAccounts(acc)
+      setSubordinates(subs)
     }).catch(() => message.error('加载失败'))
       .finally(() => setLoading(false))
   }
@@ -113,8 +128,37 @@ export default function CustomerDetail() {
     } catch (err) { message.error(err.message || '添加失败') }
   }
 
+  const handleEditTransaction = async (vals) => {
+    try {
+      await transactionApi.update(txEditModal.record.id, vals)
+      message.success('记录已更新')
+      setTxEditModal({ open: false, record: null })
+      txEditForm.resetFields()
+      Promise.all([
+        transactionApi.list({ customerId: id }),
+        customerApi.financeSummary(id)
+      ]).then(([tx, fs]) => { setTransactions(tx.data || []); setFinanceSummary(fs) })
+    } catch (err) { message.error(err.message || '修改失败') }
+  }
+
+  const handleDeleteTransaction = async (txId) => {
+    try {
+      await transactionApi.delete(txId)
+      message.success('记录已删除')
+      Promise.all([
+        transactionApi.list({ customerId: id }),
+        customerApi.financeSummary(id)
+      ]).then(([tx, fs]) => { setTransactions(tx.data || []); setFinanceSummary(fs) })
+    } catch (err) { message.error(err.message || '删除失败') }
+  }
+
   const handleEdit = async (vals) => {
     try {
+      // 自动填充时区
+      if (vals.usState && !vals.timezone) {
+        const state = US_STATES.find(s => s.code === vals.usState)
+        if (state) vals.timezone = state.timezone
+      }
       await customerApi.update(id, vals)
       message.success('客户信息已更新')
       setEditModal(false)
@@ -132,13 +176,30 @@ export default function CustomerDetail() {
   if (!customer) return <div style={{ padding: 24 }}>客户不存在</div>
 
   const txColumns = [
-    { title: '类型', dataIndex: 'type', render: v => <Tag color={v === 'DEPOSIT' ? 'green' : 'red'}>{v === 'DEPOSIT' ? '入金' : '出金'}</Tag> },
-    { title: '币种', dataIndex: 'currency' },
-    { title: '数量', dataIndex: 'amount' },
-    { title: 'USD金额', dataIndex: 'usdAmount', render: v => `$${v?.toFixed(2)}` },
-    { title: '汇率', dataIndex: 'rateAtTime', render: v => v === 1 ? '-' : `$${v?.toFixed(2)}` },
+    { title: '类型', dataIndex: 'type', width: 70, render: v => <Tag color={v === 'DEPOSIT' ? 'green' : 'red'}>{v === 'DEPOSIT' ? '入金' : '出金'}</Tag> },
+    { title: '币种', dataIndex: 'currency', width: 60 },
+    { title: '数量', dataIndex: 'amount', width: 80 },
+    { title: 'USD金额', dataIndex: 'usdAmount', width: 90, render: v => `$${v?.toFixed(2)}` },
+    { title: '汇率', dataIndex: 'rateAtTime', width: 80, render: v => v === 1 ? '-' : `$${v?.toFixed(2)}` },
     { title: '备注', dataIndex: 'note', render: v => v || '-' },
-    { title: '时间', dataIndex: 'recordedAt', render: v => dayjs(v).format('YYYY-MM-DD HH:mm') }
+    { title: '时间', dataIndex: 'recordedAt', width: 140, render: v => dayjs(v).format('YYYY-MM-DD HH:mm') },
+    {
+      title: '操作', width: 120, render: (_, r) => (
+        <Space size="small">
+          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => {
+            setTxEditModal({ open: true, record: r })
+            txEditForm.setFieldsValue({
+              type: r.type, currency: r.currency,
+              amount: r.amount, usdAmount: r.usdAmount,
+              note: r.note
+            })
+          }}>编辑</Button>
+          <Popconfirm title="确认删除此财务记录？" onConfirm={() => handleDeleteTransaction(r.id)} okText="删除" cancelText="取消">
+            <Button size="small" type="link" danger icon={<DeleteOutlined />}>删除</Button>
+          </Popconfirm>
+        </Space>
+      )
+    }
   ]
 
   return (
@@ -171,6 +232,7 @@ export default function CustomerDetail() {
               <Button icon={<SwapOutlined />} onClick={() => setMoveModal(true)}>移动群组</Button>
             )}
             <Button icon={<EditOutlined />} onClick={() => {
+              setEditSelectedState(customer.usState || null)
               editForm.setFieldsValue({
                 name: customer.name, uid: customer.uid, email: customer.email,
                 phone: customer.phone, followUpStatus: customer.followUpStatus,
@@ -179,7 +241,12 @@ export default function CustomerDetail() {
                 miningWalletAddress: customer.miningWalletAddress,
                 isRegistered: customer.isRegistered,
                 isRealName: customer.isRealName,
-                waAccountIds: customer.waAccountLinks?.map(l => l.waAccountId) ?? []
+                waAccountIds: customer.waAccountLinks?.map(l => l.waAccountId) ?? [],
+                usState: customer.usState || undefined,
+                usCity: customer.usCity || undefined,
+                timezone: customer.timezone || undefined,
+                remark: customer.remark || '',
+                createdById: customer.createdById
               })
               setEditModal(true)
             }}>编辑</Button>
@@ -219,6 +286,18 @@ export default function CustomerDetail() {
                     })}</Space>
                   : '-'}
               </Descriptions.Item>
+              {customer.usState && (
+                <Descriptions.Item label="美国州/城市">
+                  {US_STATES.find(s => s.code === customer.usState)?.name || customer.usState}
+                  {customer.usCity ? ` - ${customer.usCity}` : ''}
+                </Descriptions.Item>
+              )}
+              {customer.timezone && (
+                <Descriptions.Item label="时区">{TIMEZONE_LABELS[customer.timezone] || customer.timezone}</Descriptions.Item>
+              )}
+              {customer.remark && (
+                <Descriptions.Item label="备注">{customer.remark}</Descriptions.Item>
+              )}
             </Descriptions>
           </Col>
           <Col span={12}>
@@ -339,7 +418,7 @@ export default function CustomerDetail() {
           label: `财务记录 (${transactions.length})`,
           children: (
             <Card extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setTxModal(true)}>添加记录</Button>}>
-              <Table columns={txColumns} dataSource={transactions} rowKey="id" size="small" pagination={false} />
+              <Table columns={txColumns} dataSource={transactions} rowKey="id" size="small" pagination={false} scroll={{ x: 800 }} />
             </Card>
           )
         }
@@ -445,8 +524,44 @@ export default function CustomerDetail() {
         </Form>
       </Modal>
 
+      {/* 编辑财务记录 */}
+      <Modal title="编辑财务记录" open={txEditModal.open} onCancel={() => setTxEditModal({ open: false, record: null })} footer={null}>
+        <Form form={txEditForm} layout="vertical" onFinish={handleEditTransaction}>
+          <Form.Item name="type" label="类型" rules={[{ required: true }]}>
+            <Select>
+              <Option value="DEPOSIT">入金</Option>
+              <Option value="WITHDRAWAL">出金</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="currency" label="币种" rules={[{ required: true }]}>
+            <Select>
+              {Object.entries(CURRENCY_LABELS).map(([k, v]) => <Option key={k} value={k}>{v}</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="amount" label="数量（枚）" rules={[{ required: true }]}>
+            <Input type="number" step="0.00000001" />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(p, c) => p.currency !== c.currency}>
+            {({ getFieldValue }) => ['BTC', 'ETH'].includes(getFieldValue('currency')) && (
+              <Form.Item name="usdAmount" label="USD 金额" rules={[{ required: true, message: '请填写 USD 金额' }]}>
+                <Input type="number" step="0.01" prefix="$" />
+              </Form.Item>
+            )}
+          </Form.Item>
+          <Form.Item name="note" label="备注">
+            <Input />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">保存</Button>
+              <Button onClick={() => setTxEditModal({ open: false, record: null })}>取消</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
       {/* 编辑客户 */}
-      <Modal title="编辑客户信息" open={editModal} onCancel={() => setEditModal(false)} footer={null} width={600}>
+      <Modal title="编辑客户信息" open={editModal} onCancel={() => setEditModal(false)} footer={null} width={650}>
         <Form form={editForm} layout="vertical" onFinish={handleEdit}>
           <Row gutter={16}>
             <Col span={12}>
@@ -472,6 +587,51 @@ export default function CustomerDetail() {
               <Form.Item name="waAccountIds" label="关联WhatsApp账号">
                 <Select mode="multiple" placeholder="选择关联账号（可多选）" allowClear>
                   {myAccounts.map(a => <Option key={a.id} value={a.id}>{a.nickname ? `${a.nickname} ${a.phoneNumber}` : a.phoneNumber} ({WA_ROLE_LABELS[a.role]})</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            {canChangeOwner && (
+              <Col span={12}>
+                <Form.Item name="createdById" label="负责人">
+                  <Select showSearch filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}>
+                    {subordinates.map(u => <Option key={u.id} value={u.id}>{u.displayName || u.username}</Option>)}
+                  </Select>
+                </Form.Item>
+              </Col>
+            )}
+            <Col span={8}>
+              <Form.Item name="usState" label="美国州">
+                <Select
+                  placeholder="选择州"
+                  allowClear
+                  showSearch
+                  filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+                  onChange={(val) => {
+                    setEditSelectedState(val)
+                    editForm.setFieldsValue({ usCity: undefined, timezone: undefined })
+                    if (val) {
+                      const state = US_STATES.find(s => s.code === val)
+                      if (state) editForm.setFieldsValue({ timezone: state.timezone })
+                    }
+                  }}
+                >
+                  {US_STATES.map(s => <Option key={s.code} value={s.code}>{s.name} ({s.code})</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="usCity" label="城市">
+                <Select placeholder="选择城市" allowClear showSearch disabled={!editSelectedState}
+                  filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+                >
+                  {editCitiesForState.map(c => <Option key={c} value={c}>{c}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="timezone" label="时区">
+                <Select placeholder="自动生成" allowClear disabled>
+                  {Object.entries(TIMEZONE_LABELS).map(([k, v]) => <Option key={k} value={k}>{v}</Option>)}
                 </Select>
               </Form.Item>
             </Col>
@@ -509,6 +669,11 @@ export default function CustomerDetail() {
                     </Col>
                   </Row>
                 )}
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="remark" label="备注">
+                <Input.TextArea rows={2} placeholder="客户备注信息" maxLength={500} />
               </Form.Item>
             </Col>
           </Row>

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react'
-import { Table, Button, Input, Select, Space, Tag, Card, Row, Col, Modal, Form, message, Popconfirm, Badge } from 'antd'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Table, Button, Input, Select, Space, Tag, Card, Row, Col, Modal, Form, message, Popconfirm, Badge, Tooltip } from 'antd'
 import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, UserOutlined, TeamOutlined, StarFilled, StarOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { customerApi, groupApi, userApi, accountApi } from '../../api'
 import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
+import US_STATES, { TIMEZONE_LABELS } from '../../data/usStates'
 
 const { Option } = Select
 
@@ -22,9 +23,24 @@ export default function CustomerList() {
   const [page, setPage] = useState(1)
   const [viewMode, setViewMode] = useState('mine')
   const [myAccounts, setMyAccounts] = useState([])
+  const [selectedState, setSelectedState] = useState(null)
 
   const canDelete = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['SUPERVISOR']
   const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+  const canFilterGroup = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['SUPERVISOR']
+
+  // 提取可用小组编号
+  const groupNumbers = useMemo(() => {
+    const nums = [...new Set(subordinates.filter(u => u.groupNumber).map(u => u.groupNumber))].sort((a, b) => a - b)
+    return nums
+  }, [subordinates])
+
+  // 获取选中州的城市列表
+  const citiesForState = useMemo(() => {
+    if (!selectedState) return []
+    const state = US_STATES.find(s => s.code === selectedState)
+    return state ? state.cities : []
+  }, [selectedState])
 
   useEffect(() => {
     groupApi.list({ viewMode: 'all' }).then(setGroups).catch(() => {})
@@ -46,9 +62,14 @@ export default function CustomerList() {
 
   const handleCreate = async (vals) => {
     try {
+      // 自动填充时区
+      if (vals.usState && !vals.timezone) {
+        const state = US_STATES.find(s => s.code === vals.usState)
+        if (state) vals.timezone = state.timezone
+      }
       await customerApi.create(vals)
       message.success('客户创建成功')
-      setModalOpen(false); form.resetFields(); fetchData()
+      setModalOpen(false); form.resetFields(); setSelectedState(null); fetchData()
     } catch (err) { message.error(err.message || '创建失败') }
   }
 
@@ -70,28 +91,49 @@ export default function CustomerList() {
     {
       title: '',
       dataIndex: 'isStarred',
-      width: 40,
+      width: 36,
       render: (starred, r) => starred
         ? <StarFilled style={{ color: '#faad14', cursor: 'pointer', fontSize: 16 }} onClick={(e) => { e.stopPropagation(); toggleStar(r.id, false); }} />
         : <StarOutlined style={{ color: '#d9d9d9', cursor: 'pointer', fontSize: 16 }} onClick={(e) => { e.stopPropagation(); toggleStar(r.id, true); }} />
     },
-    { title: 'UID', dataIndex: 'uid', width: 80, render: v => v || '-' },
-    { title: '客户名称', dataIndex: 'name', render: (name, r) => <a onClick={() => navigate('/customers/' + r.id)}>{name}</a> },
-    { title: '电话', dataIndex: 'phone', render: v => v || '-' },
-    { title: '所在群组', dataIndex: 'currentGroup', render: g => g ? <Tag color="blue">{g.name}</Tag> : '-' },
-    { title: '跟进状态', dataIndex: 'followUpStatus', render: v => v ? <Tag>{v}</Tag> : '-' },
-    { title: 'WA账号', dataIndex: 'waAccountLinks', render: links => links?.length > 0
-        ? <Space size={2} wrap>{links.map(l => {
-            const a = l.waAccount
-            return <Tag key={l.waAccountId} color="cyan">{a?.nickname ? `${a.nickname} ${a.phoneNumber}` : a?.phoneNumber}</Tag>
-          })}</Space>
-        : '-' },
-    { title: '注册', dataIndex: 'isRegistered', width: 60, render: v => v ? <Badge status="success" text="是" /> : <Badge status="default" text="否" /> },
-    { title: '实名', dataIndex: 'isRealName', width: 60, render: v => v ? <Badge status="success" text="是" /> : <Badge status="default" text="否" /> },
-    { title: '授权矿池', dataIndex: 'hasMiningAuth', width: 80, render: v => v ? <Tag color="gold">已授权</Tag> : '-' },
-    { title: '入金(USD)', dataIndex: 'totalDepositUsd', render: v => v > 0 ? <span style={{ color: '#3f8600', fontWeight: 600 }}>{'$' + v.toFixed(0)}</span> : '-' },
-    { title: '负责人', dataIndex: 'createdBy', render: u => u ? u.displayName : '-' },
-    { title: '操作', render: (_, r) => (
+    { title: 'UID', dataIndex: 'uid', width: 70, render: v => v || '-' },
+    { title: '客户名称', dataIndex: 'name', width: 100, render: (name, r) => <a onClick={() => navigate('/customers/' + r.id)}>{name}</a> },
+    { title: '电话', dataIndex: 'phone', width: 100, render: v => v || '-' },
+    { title: '所在群组', dataIndex: 'currentGroup', width: 100, render: g => g ? <Tag color="blue">{g.name}</Tag> : '-' },
+    { title: '跟进状态', dataIndex: 'followUpStatus', width: 80, render: v => v ? <Tag>{v}</Tag> : '-' },
+    {
+      title: 'WA账号',
+      dataIndex: 'waAccountLinks',
+      width: 130,
+      render: links => links?.length > 0
+        ? <Space direction="vertical" size={2}>
+            {links.map(l => {
+              const a = l.waAccount
+              return <Tag key={l.waAccountId} color="cyan">{a?.nickname ? `${a.nickname} ${a.phoneNumber}` : a?.phoneNumber}</Tag>
+            })}
+          </Space>
+        : '-'
+    },
+    {
+      title: '跟进记录',
+      dataIndex: 'followUpRecords',
+      width: 200,
+      ellipsis: true,
+      render: (records) => {
+        const latest = records?.[0]
+        if (!latest) return <span style={{ color: '#999' }}>-</span>
+        return (
+          <Tooltip title={latest.content} placement="topLeft">
+            <span style={{ color: '#666' }}>{latest.content}</span>
+          </Tooltip>
+        )
+      }
+    },
+    { title: '注册', dataIndex: 'isRegistered', width: 50, render: v => v ? <Badge status="success" text="是" /> : <Badge status="default" text="否" /> },
+    { title: '实名', dataIndex: 'isRealName', width: 50, render: v => v ? <Badge status="success" text="是" /> : <Badge status="default" text="否" /> },
+    { title: '入金(USD)', dataIndex: 'totalDepositUsd', width: 90, render: v => v > 0 ? <span style={{ color: '#3f8600', fontWeight: 600 }}>{'$' + v.toFixed(0)}</span> : '-' },
+    { title: '负责人', dataIndex: 'createdBy', width: 70, render: u => u ? u.displayName : '-' },
+    { title: '操作', width: 120, fixed: 'right', render: (_, r) => (
       <Space size="small">
         <Button size="small" icon={<EyeOutlined />} onClick={() => navigate('/customers/' + r.id)}>详情</Button>
         {canDelete && (
@@ -151,9 +193,16 @@ export default function CustomerList() {
               <Option value="false">无入金</Option>
             </Select>
           </Form.Item>
+          {viewMode === 'all' && canFilterGroup && groupNumbers.length > 0 && (
+            <Form.Item name="groupNumber">
+              <Select placeholder="小组" allowClear style={{ width: 90 }}>
+                {groupNumbers.map(n => <Option key={n} value={n}>{n}组</Option>)}
+              </Select>
+            </Form.Item>
+          )}
           {canViewTeam && subordinates.length > 0 && (
             <Form.Item name="assignedUserId">
-              <Select placeholder="负责业务员" allowClear style={{ width: 120 }}>
+              <Select placeholder="负责人" allowClear style={{ width: 120 }}>
                 {subordinates.map(u => <Option key={u.id} value={u.id}>{u.displayName || u.username}</Option>)}
               </Select>
             </Form.Item>
@@ -172,10 +221,11 @@ export default function CustomerList() {
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>新增客户</Button>}
       >
         <Table columns={columns} dataSource={data.data} rowKey="id" loading={loading}
+          scroll={{ x: 1200 }}
           pagination={{ current: page, pageSize: 15, total: data.total, onChange: setPage, showSizeChanger: false }} />
       </Card>
 
-      <Modal title="新增客户" open={modalOpen} onCancel={() => setModalOpen(false)} footer={null} width={600}>
+      <Modal title="新增客户" open={modalOpen} onCancel={() => { setModalOpen(false); setSelectedState(null) }} footer={null} width={650}>
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Row gutter={16}>
             <Col span={12}>
@@ -205,6 +255,42 @@ export default function CustomerList() {
             <Col span={12}><Form.Item name="uid" label="UID"><Input /></Form.Item></Col>
             <Col span={12}><Form.Item name="email" label="邮箱"><Input /></Form.Item></Col>
             <Col span={8}>
+              <Form.Item name="usState" label="美国州">
+                <Select
+                  placeholder="选择州"
+                  allowClear
+                  showSearch
+                  filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+                  onChange={(val) => {
+                    setSelectedState(val)
+                    form.setFieldsValue({ usCity: undefined, timezone: undefined })
+                    if (val) {
+                      const state = US_STATES.find(s => s.code === val)
+                      if (state) form.setFieldsValue({ timezone: state.timezone })
+                    }
+                  }}
+                >
+                  {US_STATES.map(s => <Option key={s.code} value={s.code}>{s.name} ({s.code})</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="usCity" label="城市">
+                <Select placeholder="选择城市" allowClear showSearch disabled={!selectedState}
+                  filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+                >
+                  {citiesForState.map(c => <Option key={c} value={c}>{c}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="timezone" label="时区">
+                <Select placeholder="自动生成" allowClear disabled>
+                  {Object.entries(TIMEZONE_LABELS).map(([k, v]) => <Option key={k} value={k}>{v}</Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
               <Form.Item name="hasMiningAuth" label="授权矿池" initialValue={false}>
                 <Select><Option value={false}>否</Option><Option value={true}>是</Option></Select>
               </Form.Item>
@@ -226,11 +312,16 @@ export default function CustomerList() {
                 </Select>
               </Form.Item>
             </Col>
+            <Col span={24}>
+              <Form.Item name="remark" label="备注">
+                <Input.TextArea rows={2} placeholder="客户备注信息" maxLength={500} />
+              </Form.Item>
+            </Col>
           </Row>
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">创建</Button>
-              <Button onClick={() => setModalOpen(false)}>取消</Button>
+              <Button onClick={() => { setModalOpen(false); setSelectedState(null) }}>取消</Button>
             </Space>
           </Form.Item>
         </Form>

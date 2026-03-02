@@ -89,7 +89,7 @@ router.get('/subordinates', authenticate, async (req, res) => {
 
     const users = await prisma.user.findMany({
       where,
-      select: { id: true, username: true, displayName: true, role: true, departmentId: true, superiorId: true }
+      select: { id: true, username: true, displayName: true, role: true, departmentId: true, superiorId: true, groupNumber: true }
     });
     res.json(users);
   } catch (err) {
