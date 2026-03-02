@@ -54,25 +54,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
 });
 
-// 诊断端点（临时）
-app.get('/api/debug-paths', (req, res) => {
-  const path = require('path');
-  const fs = require('fs');
-  const paths = {
-    __dirname: __dirname,
-    cwd: process.cwd(),
-    public: path.join(__dirname, '../public'),
-    publicExists: fs.existsSync(path.join(__dirname, '../public')),
-    frontendDist: path.join(__dirname, '../../frontend/dist'),
-    frontendDistExists: fs.existsSync(path.join(__dirname, '../../frontend/dist')),
-    cwdFiles: fs.readdirSync(process.cwd()),
-    parentFiles: fs.readdirSync(path.join(process.cwd(), '..')),
-  };
-  try { paths.publicFiles = fs.readdirSync(path.join(__dirname, '../public')); } catch(e) { paths.publicFiles = e.message; }
-  try { paths.frontendDistFiles = fs.readdirSync(path.join(__dirname, '../../frontend/dist')); } catch(e) { paths.frontendDistFiles = e.message; }
-  res.json(paths);
-});
-
 // 生产环境：托管前端静态文件
 const path = require('path');
 const fs = require('fs');
