@@ -28,7 +28,7 @@ router.get('/', authenticate, async (req, res) => {
 
     const where = { user: userWhere };
     if (keyword) {
-      where.customer = { OR: [{ name: { contains: keyword } }, { phone: { contains: keyword } }] };
+      where.customer = { OR: [{ name: { contains: keyword, mode: 'insensitive' } }, { phone: { contains: keyword, mode: 'insensitive' } }] };
     }
     if (userId) where.userId = parseInt(userId);
     if (contactType) where.contactType = contactType;

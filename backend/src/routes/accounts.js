@@ -36,8 +36,8 @@ router.get('/', authenticate, async (req, res) => {
 
     if (keyword) {
       where.OR = [
-        { phoneNumber: { contains: keyword } },
-        { nickname: { contains: keyword } }
+        { phoneNumber: { contains: keyword, mode: 'insensitive' } },
+        { nickname: { contains: keyword, mode: 'insensitive' } }
       ];
     }
     if (role) where.role = role;

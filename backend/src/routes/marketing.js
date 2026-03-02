@@ -13,8 +13,8 @@ router.get('/', authenticate, async (req, res) => {
 
     if (keyword) {
       where.OR = [
-        { title: { contains: keyword } },
-        { content: { contains: keyword } }
+        { title: { contains: keyword, mode: 'insensitive' } },
+        { content: { contains: keyword, mode: 'insensitive' } }
       ];
     }
 

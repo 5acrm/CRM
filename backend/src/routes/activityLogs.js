@@ -20,7 +20,7 @@ router.get('/', authenticate, async (req, res) => {
 
     if (action) where.action = action;
     if (targetType) where.targetType = targetType;
-    if (keyword) where.targetName = { contains: keyword };
+    if (keyword) where.targetName = { contains: keyword, mode: 'insensitive' };
     if (userId) where.userId = parseInt(userId);
     if (startDate || endDate) {
       where.createdAt = {};

@@ -14,7 +14,7 @@
 
 ## 技术栈
 - **后端**: Node.js + Express.js（端口 3001）
-- **数据库**: SQLite + Prisma ORM（文件路径：`backend/prisma/crm.db`）
+- **数据库**: PostgreSQL + Prisma ORM（Railway PostgreSQL 插件，数据持久化）
 - **前端**: React + Ant Design v5 + Vite（构建后由后端托管）
 - **实时通知**: Socket.io
 - **认证**: JWT + bcrypt
@@ -42,7 +42,7 @@ c:\CRM\
 │   └── prisma/
 │       ├── schema.prisma
 │       ├── seed.js
-│       └── crm.db                # 数据库文件（所有数据在此）
+│       └── seed.js
 ├── frontend/
 │   └── src/
 │       ├── api/index.js          # 所有 API 调用封装
@@ -80,7 +80,8 @@ c:\CRM\
 - **用户不懂技术**，所有决定由 Claude 做出
 - **沟通语言**：中文
 - **代码注释**：中文或英文均可
-- SQLite 不支持 Prisma enum，所有枚举字段用 String 类型
+- PostgreSQL 数据库（通过 Railway 插件托管，数据不会因重新部署丢失）
+- Prisma 枚举字段用 String 类型（历史原因，从 SQLite 迁移而来）
 - 遇到问题先解决，不要问太多问题
 
 ## 部署方式（Railway）
@@ -96,6 +97,7 @@ git remote set-url origin "https://github.com/5acrm/CRM.git"  # 清除 token
 ```
 
 Railway 环境变量（Variables 标签）：
+- DATABASE_URL=${{Postgres.DATABASE_URL}}（引用 PostgreSQL 插件自动生成的连接字符串）
 - JWT_SECRET=crm2024xqdsecretkey
 - PORT=3001
 
@@ -103,7 +105,7 @@ Railway 环境变量（Variables 标签）：
 ```
 npx prisma db push --accept-data-loss && node src/index.js
 ```
-启动时自动创建 superadmin（xqd/xqd888999），数据库路径写死在 schema.prisma。
+启动时自动创建 superadmin（xqd/xqd888999）。数据库 URL 从环境变量读取。
 
 ## 本地开发启动
 ```
@@ -151,5 +153,5 @@ cd C:\CRM\backend && npx prisma db push
 - [x] 角色权限可见范围修复（viewMode 默认显示自己数据）
 - [x] 部署到 Railway（Docker + GitHub 自动部署）
 - [x] 超管账号自动创建（xqd/xqd888999）
+- [x] 数据库从 SQLite 迁移到 PostgreSQL（数据持久化）
 - [ ] 绑定自定义短域名（可选）
-- [ ] 重要提醒：Railway SQLite 数据在重新部署时会重置，如需持久化需迁移到 PostgreSQL

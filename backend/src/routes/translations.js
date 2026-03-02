@@ -167,7 +167,7 @@ router.get('/search-customer', authenticate, async (req, res) => {
     if (!phone) return res.status(400).json({ message: '请输入电话号码' });
 
     const customers = await prisma.customer.findMany({
-      where: { phone: { contains: phone } },
+      where: { phone: { contains: phone, mode: 'insensitive' } },
       include: {
         currentGroup: { select: { id: true, name: true } },
         createdBy: { select: { id: true, displayName: true } }

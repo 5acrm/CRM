@@ -17,15 +17,15 @@ router.get('/', authenticate, async (req, res) => {
 
     if (keyword) {
       where.OR = [
-        { name: { contains: keyword } },
-        { phone: { contains: keyword } },
-        { email: { contains: keyword } }
+        { name: { contains: keyword, mode: 'insensitive' } },
+        { phone: { contains: keyword, mode: 'insensitive' } },
+        { email: { contains: keyword, mode: 'insensitive' } }
       ];
     }
-    if (uid) where.uid = { contains: uid };
+    if (uid) where.uid = { contains: uid, mode: 'insensitive' };
     if (groupId) where.currentGroupId = parseInt(groupId);
     if (assignedUserId) where.createdById = parseInt(assignedUserId);
-    if (followUpStatus) where.followUpStatus = { contains: followUpStatus };
+    if (followUpStatus) where.followUpStatus = { contains: followUpStatus, mode: 'insensitive' };
     if (hasDeposit === 'true') {
       where.transactions = { some: { type: 'DEPOSIT' } };
     } else if (hasDeposit === 'false') {
