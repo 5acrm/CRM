@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message } from 'antd'
-import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons'
+import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { groupApi } from '../../api'
 import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
@@ -23,9 +23,11 @@ export default function GroupsPage() {
   const [addStatsModal, setAddStatsModal] = useState({ open: false, groupId: null })
   const [summary, setSummary] = useState(null)
   const [summaryMonth, setSummaryMonth] = useState(dayjs())
+  const [missingStatsIds, setMissingStatsIds] = useState(new Set())
   const [form] = Form.useForm()
   const [statsForm] = Form.useForm()
   const [mergeForm] = Form.useForm()
+  const canEditCost = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
 
   const load = () => {
     setLoading(true)
@@ -34,9 +36,19 @@ export default function GroupsPage() {
 
   useEffect(() => { load() }, [viewMode])
 
+  useEffect(() => {
+    groupApi.missingStats().then(data => {
+      setMissingStatsIds(new Set(data.map(g => g.id)))
+    }).catch(() => {})
+  }, [])
+
   const handleCreate = async (vals) => {
     try {
-      await groupApi.create(vals)
+      const submitData = { ...vals }
+      if (vals.createdDate) {
+        submitData.createdDate = vals.createdDate.toISOString()
+      }
+      await groupApi.create(submitData)
       message.success('群组创建成功')
       setCreateModal(false)
       form.resetFields()
@@ -100,6 +112,9 @@ export default function GroupsPage() {
           </a>
           {r.isMerged && r.mergedInto && (
             <Tag color="default" style={{ fontSize: 11 }}>已合并到：{r.mergedInto.name}</Tag>
+          )}
+          {missingStatsIds.has(r.id) && (
+            <Tag color="red" icon={<WarningOutlined />}>未更新今日数据</Tag>
           )}
         </Space>
       )
@@ -196,8 +211,11 @@ export default function GroupsPage() {
               <Option value="STOCK">股</Option>
             </Select>
           </Form.Item>
+          <Form.Item name="createdDate" label="创建日期" initialValue={dayjs()}>
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
           <Form.Item name="cost" label="月成本 (USD/月)" initialValue={3500}>
-            <InputNumber min={0} style={{ width: '100%' }} prefix="$" />
+            <InputNumber min={0} style={{ width: '100%' }} prefix="$" disabled={!canEditCost} />
           </Form.Item>
           <Form.Item>
             <Space>

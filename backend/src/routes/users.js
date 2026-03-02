@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/permission');
+const { logActivity } = require('../services/activityLogger');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -155,6 +156,7 @@ router.post('/', authenticate, async (req, res) => {
       include: { department: true }
     });
 
+    logActivity({ userId: req.user.id, action: 'CREATE', targetType: 'USER', targetId: user.id, targetName: user.displayName || user.username });
     res.json({ ...user, passwordHash: undefined });
   } catch (err) {
     console.error(err);
@@ -216,6 +218,12 @@ router.put('/:id', authenticate, async (req, res) => {
       include: { department: true }
     });
 
+    if (password) {
+      logActivity({ userId: req.user.id, action: 'PASSWORD_CHANGE', targetType: 'USER', targetId: parseInt(req.params.id), targetName: user.displayName || user.username });
+    } else {
+      logActivity({ userId: req.user.id, action: 'UPDATE', targetType: 'USER', targetId: parseInt(req.params.id), targetName: user.displayName || user.username, details: req.body });
+    }
+
     res.json({ ...user, passwordHash: undefined });
   } catch (err) {
     console.error(err);
@@ -245,8 +253,10 @@ router.delete('/:id', authenticate, requireRole('ADMIN'), async (req, res) => {
     const target = await prisma.user.findUnique({ where: { id } });
     if (!target) return res.status(404).json({ message: '用户不存在' });
     if (target.role === 'SUPER_ADMIN') return res.status(403).json({ message: '不能删除超级管理员' });
+    const userName = target.displayName || target.username;
 
     await prisma.user.delete({ where: { id } });
+    logActivity({ userId: req.user.id, action: 'DELETE', targetType: 'USER', targetId: id, targetName: userName });
     res.json({ message: '用户已删除' });
   } catch (err) {
     console.error(err);

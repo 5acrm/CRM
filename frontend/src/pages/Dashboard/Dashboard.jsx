@@ -32,7 +32,6 @@ export default function Dashboard() {
 
   const expiringColumns = [
     { title: '账号', render: (_, r) => r.nickname || r.phoneNumber },
-    { title: '角色', dataIndex: 'role', render: v => <Tag color="blue">{v}</Tag> },
     { title: '到期日', dataIndex: 'renewalDate', render: v => dayjs(v).format('YYYY-MM-DD') },
     { title: '天数', render: (_, r) => {
       const days = Math.ceil((new Date(r.renewalDate) - new Date()) / (1000 * 60 * 60 * 24))

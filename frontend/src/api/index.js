@@ -52,7 +52,9 @@ export const customerApi = {
   moveGroup: (id, data) => api.put(`/customers/${id}/move-group`, data),
   updateWallets: (id, data) => api.put(`/customers/${id}/wallets`, data),
   updateFollowers: (id, data) => api.put(`/customers/${id}/followers`, data),
-  financeSummary: (id) => api.get(`/customers/${id}/finance-summary`)
+  financeSummary: (id) => api.get(`/customers/${id}/finance-summary`),
+  createReminder: (id, data) => api.post(`/customers/${id}/reminders`, data),
+  completeReminder: (id, reminderId) => api.put(`/customers/${id}/reminders/${reminderId}/complete`)
 }
 
 // 群组
@@ -63,7 +65,8 @@ export const groupApi = {
   merge: (id, data) => api.post(`/groups/${id}/merge`, data),
   stats: (id, params) => api.get(`/groups/${id}/stats`, { params }),
   addStats: (id, data) => api.post(`/groups/${id}/stats`, data),
-  summary: (id, params) => api.get(`/groups/${id}/summary`, { params })
+  summary: (id, params) => api.get(`/groups/${id}/summary`, { params }),
+  missingStats: () => api.get('/groups/missing-stats')
 }
 
 // WhatsApp 账号
@@ -108,6 +111,29 @@ export const notificationApi = {
   list: (params) => api.get('/notifications', { params }),
   markRead: (id) => api.put(`/notifications/${id}/read`),
   markAllRead: () => api.put('/notifications/read-all')
+}
+
+// 操作日志
+export const activityLogApi = {
+  list: (params) => api.get('/activity-logs', { params }),
+}
+
+// 待办事项
+export const todoApi = {
+  list: (params) => api.get('/todos', { params }),
+  create: (data) => api.post('/todos', data),
+  update: (id, data) => api.put(`/todos/${id}`, data),
+  complete: (id) => api.put(`/todos/${id}/complete`),
+  delete: (id) => api.delete(`/todos/${id}`),
+}
+
+// 营销智库
+export const marketingApi = {
+  list: (params) => api.get('/marketing', { params }),
+  get: (id) => api.get(`/marketing/${id}`),
+  create: (data) => api.post('/marketing', data),
+  update: (id, data) => api.put(`/marketing/${id}`, data),
+  delete: (id) => api.delete(`/marketing/${id}`),
 }
 
 export default api

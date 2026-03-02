@@ -4,7 +4,8 @@ import { Layout, Menu, Badge, Avatar, Dropdown, Space, Typography, message } fro
 import {
   DashboardOutlined, TeamOutlined, AppstoreOutlined, MobileOutlined,
   TransactionOutlined, TranslationOutlined, BellOutlined, SettingOutlined,
-  LogoutOutlined, UserOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ProfileOutlined
+  LogoutOutlined, UserOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ProfileOutlined,
+  FileSearchOutlined, BulbOutlined, CheckSquareOutlined
 } from '@ant-design/icons'
 import { io } from 'socket.io-client'
 import useAuthStore, { ROLE_LABELS, ROLE_WEIGHT } from '../store/auth'
@@ -53,6 +54,9 @@ export default function MainLayout() {
     { key: '/notifications', icon: <BellOutlined />, label: (
       <span>通知中心 {unreadCount > 0 && <Badge count={unreadCount} size="small" offset={[4, 0]} />}</span>
     )},
+    { key: '/todos', icon: <CheckSquareOutlined />, label: '待办事项' },
+    { key: '/marketing', icon: <BulbOutlined />, label: '营销智库' },
+    ...(canAdmin ? [{ key: '/activity-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
     ...(canAdmin ? [{ key: '/admin', icon: <SettingOutlined />, label: '系统管理' }] : [])
   ]
 

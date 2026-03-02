@@ -17,6 +17,9 @@ const transactionRoutes = require('./routes/transactions');
 const followUpRoutes = require('./routes/followups');
 const translationRoutes = require('./routes/translations');
 const notificationRoutes = require('./routes/notifications');
+const activityLogRoutes = require('./routes/activityLogs');
+const todoRoutes = require('./routes/todos');
+const marketingRoutes = require('./routes/marketing');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -29,7 +32,7 @@ initSocket(io);
 app.set('io', io);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // 路由
 app.use('/api/auth', authRoutes);
@@ -41,6 +44,9 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/followups', followUpRoutes);
 app.use('/api/translations', translationRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/todos', todoRoutes);
+app.use('/api/marketing', marketingRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

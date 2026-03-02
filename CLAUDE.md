@@ -1,8 +1,13 @@
 # CRM 客户管理系统
 
 ## 项目说明
-这是一个网页版客户管理系统（CRM），部署在 Windows Server 2022 上，供公司内部使用。
+这是一个网页版客户管理系统（CRM），已部署到 Railway 云平台，供公司内部使用。
 面向加密货币投资团队（6-50人），通过 WhatsApp 群组引流，管理群组数据、客户跟进、财务记录、翻译服务等。
+
+## 线上地址
+- **生产环境**：https://crm-production-b80c.up.railway.app
+- **平台**：Railway（Docker 部署，自动从 GitHub main 分支触发）
+- **代码仓库**：https://github.com/5acrm/CRM
 
 ## 用户规模
 6-50 人同时使用
@@ -78,14 +83,35 @@ c:\CRM\
 - SQLite 不支持 Prisma enum，所有枚举字段用 String 类型
 - 遇到问题先解决，不要问太多问题
 
-## 启动方式
-```
-# 生产（构建前端 + 启动后端）
-C:\CRM\start.bat
+## 部署方式（Railway）
+推送代码到 GitHub → Railway 自动构建并部署（约 3-5 分钟）
 
-# 如果 start.bat 失败，手动执行：
-cd C:\CRM\frontend && npm run build
+```bash
+# 推送代码（需要 GitHub token）
+git add .
+git commit -m "描述改动"
+git remote set-url origin "https://5acrm:TOKEN@github.com/5acrm/CRM.git"
+git push origin main
+git remote set-url origin "https://github.com/5acrm/CRM.git"  # 清除 token
+```
+
+Railway 环境变量（Variables 标签）：
+- JWT_SECRET=crm2024xqdsecretkey
+- PORT=3001
+
+启动命令（Dockerfile CMD）：
+```
+npx prisma db push --accept-data-loss && node src/index.js
+```
+启动时自动创建 superadmin（xqd/xqd888999），数据库路径写死在 schema.prisma。
+
+## 本地开发启动
+```
+# 后端
 cd C:\CRM\backend && node src/index.js
+
+# 前端（开发模式）
+cd C:\CRM\frontend && npm run dev
 
 # 重新生成 Prisma 客户端（改 schema 后需要，先停止后端）：
 rm -f "C:\CRM\backend\node_modules\.prisma\client\query_engine-windows.dll.node"
@@ -98,10 +124,10 @@ cd C:\CRM\backend && npx prisma db push
 - **服务器错误 500**：查看后端终端日志（已加 console.error），确认 Prisma 客户端是否需要重新生成
 - **团队数据显示为空**：检查 `api/index.js` 中对应 API 是否传递了 `params`
 
-## 超管账号（临时）
-- 用户名: superadmin
-- 密码: admin123456
-- **正式使用前必须修改密码！**
+## 超管账号
+- 用户名: xqd
+- 密码: xqd888999
+- 每次部署时若不存在则自动创建（index.js bootstrap 函数）
 
 ## 数据模型要点
 - **Customer 与 WaAccount** 是多对多关系，通过 `CustomerWaAccount` 表（含 addedById 记录添加人）
@@ -123,6 +149,7 @@ cd C:\CRM\backend && npx prisma db push
 - [x] 通知中心（点击跳转客户详情；所有通知均有已读按钮；翻译推送也可跳转）
 - [x] 用户管理（小组编号/改密码/删除；主管可管组长+组员；组长可管组员）
 - [x] 角色权限可见范围修复（viewMode 默认显示自己数据）
-- [x] Prisma 客户端同步（isRegistered/isRealName/CustomerWaAccount 均已生效）
-- [ ] 修改超管密码（正式使用前必须做）
-- [ ] 迁移到云服务器（用户已知晓需购买云服务器）
+- [x] 部署到 Railway（Docker + GitHub 自动部署）
+- [x] 超管账号自动创建（xqd/xqd888999）
+- [ ] 绑定自定义短域名（可选）
+- [ ] 重要提醒：Railway SQLite 数据在重新部署时会重置，如需持久化需迁移到 PostgreSQL

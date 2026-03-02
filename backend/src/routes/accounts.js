@@ -68,14 +68,14 @@ router.get('/mine', authenticate, async (req, res) => {
   }
 });
 
-// 获取即将到期的账号（28天内，必须在 /:id 之前）
+// 获取即将到期的账号（3天内，必须在 /:id 之前）
 router.get('/expiring', authenticate, async (req, res) => {
   try {
     const now = new Date();
-    const in28Days = new Date(now.getTime() + 28 * 24 * 60 * 60 * 1000);
+    const in3Days = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
 
     const where = {
-      renewalDate: { gte: now, lte: in28Days },
+      renewalDate: { gte: now, lte: in3Days },
       isActive: true,
       isPermanentBan: false
     };
@@ -102,6 +102,9 @@ router.post('/', authenticate, async (req, res) => {
     if (!phoneNumber || !role || !region) {
       return res.status(400).json({ message: '手机号、角色、地区为必填项' });
     }
+
+    const existingAccount = await prisma.waAccount.findUnique({ where: { phoneNumber } });
+    if (existingAccount) return res.status(400).json({ message: '该手机号已存在' });
 
     const account = await prisma.waAccount.create({
       data: {

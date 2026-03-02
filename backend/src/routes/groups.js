@@ -1,9 +1,12 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const { logActivity } = require('../services/activityLogger');
 
 const router = express.Router();
 const prisma = new PrismaClient();
+
+const ROLE_WEIGHT = { MEMBER: 1, TRANSLATOR: 1, TEAM_LEADER: 2, SUPERVISOR: 3, DEPT_MANAGER: 4, ADMIN: 5, SUPER_ADMIN: 6 };
 
 const GROUP_TYPE_LABELS = { COMMUNITY: '社区', REGULAR: '普群' };
 const GROUP_ATTR_LABELS = { CRYPTO: '币', STOCK: '股' };
@@ -55,20 +58,56 @@ router.get('/', authenticate, async (req, res) => {
 // 创建群组
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { name, cost, groupType, groupAttr } = req.body;
+    const { name, cost, groupType, groupAttr, createdDate } = req.body;
     if (!name) return res.status(400).json({ message: '群组名称为必填项' });
 
-    const group = await prisma.waGroup.create({
-      data: {
-        name,
-        userId: req.user.id,
-        cost: cost ? parseFloat(cost) : 3500,
-        groupType: groupType || null,
-        groupAttr: groupAttr || null
-      }
-    });
+    const data = {
+      name,
+      userId: req.user.id,
+      cost: cost ? parseFloat(cost) : 3500,
+      groupType: groupType || null,
+      groupAttr: groupAttr || null
+    };
+    if (createdDate) {
+      data.createdAt = new Date(createdDate);
+    }
+
+    const group = await prisma.waGroup.create({ data });
+    logActivity({ userId: req.user.id, action: 'CREATE', targetType: 'GROUP', targetId: group.id, targetName: group.name });
     res.json(group);
   } catch (err) {
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
+// 获取今日未录入数据的群组
+router.get('/missing-stats', authenticate, async (req, res) => {
+  try {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const groups = await prisma.waGroup.findMany({
+      where: {
+        isActive: true,
+        isMerged: false,
+        createdAt: { gte: thirtyDaysAgo }
+      },
+      include: {
+        user: { select: { id: true, displayName: true } },
+        dailyStats: {
+          where: { date: { gte: todayStart, lte: todayEnd } }
+        }
+      }
+    });
+
+    const missing = groups.filter(g => g.dailyStats.length === 0);
+    res.json(missing);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ message: '服务器错误' });
   }
 });
@@ -86,6 +125,15 @@ router.put('/:id', authenticate, async (req, res) => {
     }
 
     const { name, cost, isActive, groupType, groupAttr } = req.body;
+
+    // 仅组长及以上角色可修改群成本
+    if (cost !== undefined && cost !== null && cost !== group.cost) {
+      const userWeight = ROLE_WEIGHT[req.user.role] || 0;
+      if (userWeight < ROLE_WEIGHT['TEAM_LEADER']) {
+        return res.status(403).json({ message: '仅组长及以上角色可修改群成本' });
+      }
+    }
+
     const updated = await prisma.waGroup.update({
       where: { id },
       data: {
@@ -96,6 +144,7 @@ router.put('/:id', authenticate, async (req, res) => {
         groupAttr: groupAttr !== undefined ? groupAttr : undefined
       }
     });
+    logActivity({ userId: req.user.id, action: 'UPDATE', targetType: 'GROUP', targetId: parseInt(req.params.id), targetName: updated.name, details: req.body });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ message: '服务器错误' });

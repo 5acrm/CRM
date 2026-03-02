@@ -12,6 +12,9 @@ import TranslationsPage from './pages/Translations/TranslationsPage'
 import NotificationsPage from './pages/Notifications/NotificationsPage'
 import AdminPage from './pages/Admin/AdminPage'
 import FollowUpsPage from './pages/FollowUps/FollowUpsPage'
+import ActivityLogsPage from './pages/ActivityLogs/ActivityLogsPage'
+import TodosPage from './pages/Todos/TodosPage'
+import MarketingPage from './pages/Marketing/MarketingPage'
 
 function PrivateRoute({ children }) {
   const token = useAuthStore(s => s.token)
@@ -33,6 +36,9 @@ function App() {
           <Route path="transactions" element={<TransactionsPage />} />
           <Route path="translations" element={<TranslationsPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="todos" element={<TodosPage />} />
+          <Route path="activity-logs" element={<ActivityLogsPage />} />
+          <Route path="marketing" element={<MarketingPage />} />
           <Route path="admin/*" element={<AdminPage />} />
         </Route>
       </Routes>

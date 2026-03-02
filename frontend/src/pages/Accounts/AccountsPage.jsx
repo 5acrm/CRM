@@ -165,7 +165,7 @@ export default function AccountsPage() {
     <div style={{ padding: 24 }}>
       {expiring.length > 0 && (
         <Alert
-          message={`有 ${expiring.length} 个账号将在 28 天内到期，请及时续费`}
+          message={`有 ${expiring.length} 个账号将在 3 天内到期，请及时续费`}
           type="warning" icon={<WarningOutlined />} showIcon style={{ marginBottom: 16 }} closable
         />
       )}

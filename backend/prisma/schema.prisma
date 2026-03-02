@@ -52,6 +52,10 @@ model User {
   customerFollowers    CustomerFollower[]
   customerGroupMoves   CustomerGroupHistory[]
   customerWaLinks      CustomerWaAccount[]
+  activityLogs         ActivityLog[]
+  followUpReminders    FollowUpReminder[]
+  todoItems            TodoItem[]
+  marketingArticles    MarketingArticle[]
 }
 
 // ==================== WhatsApp 账号 ====================
@@ -63,7 +67,7 @@ model WaAccount {
   userId          Int
   user            User      @relation(fields: [userId], references: [id])
 
-  phoneNumber     String
+  phoneNumber     String    @unique
   nickname        String?
   role            String    // PROFESSOR | BIG_ASSISTANT | SMALL_ASSISTANT | WATER_ARMY | PLATFORM_TECH
   region          String    // DOMESTIC | OVERSEAS
@@ -132,12 +136,13 @@ model Customer {
   uid                String?   @unique
   name               String
   email              String?
-  phone              String?
+  phone              String?   @unique
   hasMiningAuth       Boolean   @default(false)
   miningWalletName    String?   // 授权矿池时的钱包名称
   miningWalletAddress String?   // 授权矿池时的钱包地址
   isRegistered        Boolean   @default(false) // 是否注册
   isRealName          Boolean   @default(false) // 是否实名
+  isStarred           Boolean   @default(false) // 特别关注
   followUpStatus      String?
 
   currentGroupId     Int?
@@ -156,6 +161,8 @@ model Customer {
   transactions       Transaction[]
   translationTasks   TranslationTask[]
   waAccountLinks     CustomerWaAccount[]
+  followUpReminders  FollowUpReminder[]
+  todoItems          TodoItem[]
 }
 
 model CustomerWaAccount {
@@ -304,4 +311,65 @@ model Notification {
   relatedId Int?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// ==================== 操作日志 ====================
+// action: CREATE | UPDATE | DELETE | PASSWORD_CHANGE
+// targetType: GROUP | CUSTOMER | USER
+
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  action      String   // CREATE | UPDATE | DELETE | PASSWORD_CHANGE
+  targetType  String   // GROUP | CUSTOMER | USER
+  targetId    Int?
+  targetName  String?
+  details     String?  // JSON 字符串，记录变更详情
+  createdAt   DateTime @default(now())
+}
+
+// ==================== 跟进提醒 ====================
+
+model FollowUpReminder {
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  scheduledAt DateTime
+  content     String
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+// ==================== 待办事项 ====================
+// type: MANUAL | FOLLOWUP_REMINDER
+
+model TodoItem {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  user              User      @relation(fields: [userId], references: [id])
+  title             String
+  content           String?
+  dueDate           DateTime?
+  isCompleted       Boolean   @default(false)
+  type              String    @default("MANUAL") // MANUAL | FOLLOWUP_REMINDER
+  relatedCustomerId Int?
+  relatedCustomer   Customer? @relation(fields: [relatedCustomerId], references: [id])
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ==================== 营销智库 ====================
+
+model MarketingArticle {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  images    String?  // JSON 数组，存储 base64 图片数据
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

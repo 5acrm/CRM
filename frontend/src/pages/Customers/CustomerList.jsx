@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Table, Button, Input, Select, Space, Tag, Card, Row, Col, Modal, Form, message, Popconfirm, Badge } from 'antd'
-import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, UserOutlined, TeamOutlined } from '@ant-design/icons'
+import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, UserOutlined, TeamOutlined, StarFilled, StarOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { customerApi, groupApi, userApi, accountApi } from '../../api'
 import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
@@ -59,7 +59,22 @@ export default function CustomerList() {
     } catch (err) { message.error(err.message || '删除失败') }
   }
 
+  const toggleStar = async (id, starred) => {
+    try {
+      await customerApi.update(id, { isStarred: starred });
+      fetchData();
+    } catch (err) { message.error('操作失败'); }
+  };
+
   const columns = [
+    {
+      title: '',
+      dataIndex: 'isStarred',
+      width: 40,
+      render: (starred, r) => starred
+        ? <StarFilled style={{ color: '#faad14', cursor: 'pointer', fontSize: 16 }} onClick={(e) => { e.stopPropagation(); toggleStar(r.id, false); }} />
+        : <StarOutlined style={{ color: '#d9d9d9', cursor: 'pointer', fontSize: 16 }} onClick={(e) => { e.stopPropagation(); toggleStar(r.id, true); }} />
+    },
     { title: 'UID', dataIndex: 'uid', width: 80, render: v => v || '-' },
     { title: '客户名称', dataIndex: 'name', render: (name, r) => <a onClick={() => navigate('/customers/' + r.id)}>{name}</a> },
     { title: '电话', dataIndex: 'phone', render: v => v || '-' },
@@ -164,7 +179,7 @@ export default function CustomerList() {
         <Form form={form} layout="vertical" onFinish={handleCreate}>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="phone" label="电话号码（必填）" rules={[{ required: true, message: '请填写电话号码' }]}>
+              <Form.Item name="phone" label="电话号码（必填）" rules={[{ required: true, message: '请填写电话号码' }, { pattern: /^\d+$/, message: '电话号码只能包含数字' }]}>
                 <Input />
               </Form.Item>
             </Col>

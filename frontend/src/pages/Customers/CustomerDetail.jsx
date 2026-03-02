@@ -3,11 +3,12 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Card, Tabs, Descriptions, Tag, Button, Space, Modal, Form, Input, Select,
   Timeline, List, Avatar, Typography, Divider, Row, Col, Statistic, message,
-  Badge, Tooltip, Table
+  Badge, Tooltip, Table, DatePicker
 } from 'antd'
 import {
   ArrowLeftOutlined, EditOutlined, PlusOutlined, MessageOutlined,
-  PhoneOutlined, VideoCameraOutlined, SwapOutlined, UserOutlined
+  PhoneOutlined, VideoCameraOutlined, SwapOutlined, UserOutlined,
+  StarFilled, StarOutlined, BellOutlined
 } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { customerApi, followUpApi, transactionApi, groupApi, accountApi } from '../../api'
@@ -43,6 +44,8 @@ export default function CustomerDetail() {
   const [moveForm] = Form.useForm()
   const [txForm] = Form.useForm()
   const [editForm] = Form.useForm()
+  const [reminderModal, setReminderModal] = useState(false)
+  const [reminderForm] = Form.useForm()
 
   const canMoveCustomer = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
   const canComment = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
@@ -155,6 +158,15 @@ export default function CustomerDetail() {
         }
         extra={
           <Space>
+            <Button
+              icon={customer.isStarred ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
+              onClick={async () => {
+                await customerApi.update(id, { isStarred: !customer.isStarred });
+                load();
+              }}
+            >
+              {customer.isStarred ? '取消关注' : '特别关注'}
+            </Button>
             {canMoveCustomer && (
               <Button icon={<SwapOutlined />} onClick={() => setMoveModal(true)}>移动群组</Button>
             )}
@@ -253,7 +265,22 @@ export default function CustomerDetail() {
           key: 'followup',
           label: `跟进记录 (${followUps.length})`,
           children: (
-            <Card extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setFollowUpModal(true)}>添加跟进记录</Button>}>
+            <Card extra={<Space><Button icon={<BellOutlined />} onClick={() => setReminderModal(true)}>设置跟进提醒</Button><Button type="primary" icon={<PlusOutlined />} onClick={() => setFollowUpModal(true)}>添加跟进记录</Button></Space>}>
+              {customer?.followUpReminders?.length > 0 && (
+                <div style={{ marginBottom: 16, padding: '8px 12px', background: '#fff7e6', borderRadius: 4, border: '1px solid #ffd591' }}>
+                  <strong><BellOutlined /> 跟进提醒：</strong>
+                  {customer.followUpReminders.map(r => (
+                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                      <span>{dayjs(r.scheduledAt).format('MM-DD HH:mm')} - {r.content}</span>
+                      <Button size="small" type="link" onClick={async () => {
+                        await customerApi.completeReminder(id, r.id);
+                        message.success('已完成');
+                        load();
+                      }}>完成</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {followUps.length === 0 ? <div style={{ textAlign: 'center', color: '#999', padding: 32 }}>暂无跟进记录</div> : (
                 <List
                   dataSource={followUps}
@@ -429,7 +456,7 @@ export default function CustomerDetail() {
               <Form.Item name="uid" label="UID"><Input /></Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="phone" label="电话"><Input /></Form.Item>
+              <Form.Item name="phone" label="电话" rules={[{ pattern: /^\d+$/, message: '电话号码只能包含数字' }]}><Input /></Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="email" label="邮箱"><Input /></Form.Item>
@@ -490,6 +517,35 @@ export default function CustomerDetail() {
               <Button type="primary" htmlType="submit">保存</Button>
               <Button onClick={() => setEditModal(false)}>取消</Button>
             </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 设置跟进提醒 */}
+      <Modal
+        title="设置跟进提醒"
+        open={reminderModal}
+        onCancel={() => { setReminderModal(false); reminderForm.resetFields(); }}
+        onOk={async () => {
+          try {
+            const values = await reminderForm.validateFields();
+            await customerApi.createReminder(id, {
+              scheduledAt: values.scheduledAt.toISOString(),
+              content: values.content
+            });
+            message.success('提醒已设置');
+            setReminderModal(false);
+            reminderForm.resetFields();
+            load();
+          } catch (err) { if (err.response) message.error(err.response.data.message); }
+        }}
+      >
+        <Form form={reminderForm} layout="vertical">
+          <Form.Item name="scheduledAt" label="提醒时间" rules={[{ required: true, message: '请选择时间' }]}>
+            <DatePicker showTime format="YYYY-MM-DD HH:mm" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="content" label="提醒内容" rules={[{ required: true, message: '请填写内容' }]}>
+            <Input.TextArea rows={3} placeholder="例如：约好和客户讨论投资方案" />
           </Form.Item>
         </Form>
       </Modal>

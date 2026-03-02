@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { buildVisibilityFilter, canMoveCustomer, ROLE_WEIGHT } = require('../middleware/permission');
+const { logActivity } = require('../services/activityLogger');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -49,7 +50,7 @@ router.get('/', authenticate, async (req, res) => {
         wallets: true,
         _count: { select: { transactions: true, followUpRecords: true } }
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ isStarred: 'desc' }, { createdAt: 'desc' }],
       skip: (parseInt(page) - 1) * parseInt(pageSize),
       take: parseInt(pageSize)
     });
@@ -97,6 +98,11 @@ router.get('/:id', authenticate, async (req, res) => {
             movedBy: { select: { id: true, displayName: true } }
           },
           orderBy: { movedAt: 'desc' }
+        },
+        followUpReminders: {
+          where: { isCompleted: false },
+          include: { user: { select: { id: true, displayName: true } } },
+          orderBy: { scheduledAt: 'asc' }
         }
       }
     });
@@ -111,8 +117,14 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { name, uid, email, phone, hasMiningAuth, miningWalletName, miningWalletAddress,
-            isRegistered, isRealName, currentGroupId, waAccountIds, followUpStatus, wallets } = req.body;
+            isRegistered, isRealName, isStarred, currentGroupId, waAccountIds, followUpStatus, wallets } = req.body;
     if (!phone) return res.status(400).json({ message: '电话号码为必填项' });
+
+    if (phone) {
+      if (!/^\d+$/.test(phone)) return res.status(400).json({ message: '电话号码只能包含数字' });
+      const phoneExists = await prisma.customer.findFirst({ where: { phone } });
+      if (phoneExists) return res.status(400).json({ message: '该电话号码已被其他客户使用' });
+    }
 
     const customer = await prisma.customer.create({
       data: {
@@ -123,6 +135,7 @@ router.post('/', authenticate, async (req, res) => {
         miningWalletAddress: hasMiningAuth ? (miningWalletAddress || null) : null,
         isRegistered: isRegistered || false,
         isRealName: isRealName || false,
+        isStarred: isStarred || false,
         followUpStatus,
         currentGroupId: currentGroupId ? parseInt(currentGroupId) : null,
         createdById: req.user.id,
@@ -132,6 +145,8 @@ router.post('/', authenticate, async (req, res) => {
       },
       include: { currentGroup: true, wallets: true }
     });
+
+    logActivity({ userId: req.user.id, action: 'CREATE', targetType: 'CUSTOMER', targetId: customer.id, targetName: customer.name || customer.phone });
 
     // 创建关联 WA 账号（只能关联自己的账号）
     if (waAccountIds && waAccountIds.length > 0) {
@@ -158,7 +173,13 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { name, uid, email, phone, hasMiningAuth, miningWalletName, miningWalletAddress,
-            isRegistered, isRealName, waAccountIds, followUpStatus } = req.body;
+            isRegistered, isRealName, isStarred, waAccountIds, followUpStatus } = req.body;
+
+    if (phone) {
+      if (!/^\d+$/.test(phone)) return res.status(400).json({ message: '电话号码只能包含数字' });
+      const phoneExists = await prisma.customer.findFirst({ where: { phone, id: { not: parseInt(req.params.id) } } });
+      if (phoneExists) return res.status(400).json({ message: '该电话号码已被其他客户使用' });
+    }
 
     const updated = await prisma.customer.update({
       where: { id },
@@ -172,10 +193,13 @@ router.put('/:id', authenticate, async (req, res) => {
         miningWalletAddress: hasMiningAuth ? (miningWalletAddress || null) : null,
         isRegistered: isRegistered !== undefined ? isRegistered : undefined,
         isRealName: isRealName !== undefined ? isRealName : undefined,
+        isStarred: isStarred !== undefined ? isStarred : undefined,
         followUpStatus: followUpStatus !== undefined ? (followUpStatus || null) : undefined
       },
       include: { currentGroup: true, wallets: true }
     });
+
+    logActivity({ userId: req.user.id, action: 'UPDATE', targetType: 'CUSTOMER', targetId: parseInt(req.params.id), targetName: updated.name || updated.phone, details: req.body });
 
     // 更新关联 WA 账号：删除当前用户添加的旧记录，新增选择的（只能操作自己的账号）
     if (waAccountIds !== undefined) {
@@ -200,6 +224,69 @@ router.put('/:id', authenticate, async (req, res) => {
   }
 });
 
+// 创建跟进提醒
+router.post('/:id/reminders', authenticate, async (req, res) => {
+  try {
+    const customerId = parseInt(req.params.id);
+    const { scheduledAt, content } = req.body;
+    if (!scheduledAt || !content) return res.status(400).json({ message: '请填写提醒时间和内容' });
+
+    const reminder = await prisma.followUpReminder.create({
+      data: {
+        customerId,
+        userId: req.user.id,
+        scheduledAt: new Date(scheduledAt),
+        content
+      }
+    });
+
+    // 同时创建待办事项
+    const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, phone: true } });
+    await prisma.todoItem.create({
+      data: {
+        userId: req.user.id,
+        title: `跟进提醒：${customer?.name || customer?.phone || '客户'}`,
+        content,
+        dueDate: new Date(scheduledAt),
+        type: 'FOLLOWUP_REMINDER',
+        relatedCustomerId: customerId
+      }
+    });
+
+    res.json(reminder);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
+// 完成跟进提醒
+router.put('/:id/reminders/:reminderId/complete', authenticate, async (req, res) => {
+  try {
+    const reminderId = parseInt(req.params.reminderId);
+    const reminder = await prisma.followUpReminder.update({
+      where: { id: reminderId },
+      data: { isCompleted: true }
+    });
+
+    // 同步完成关联的待办事项
+    await prisma.todoItem.updateMany({
+      where: {
+        type: 'FOLLOWUP_REMINDER',
+        relatedCustomerId: parseInt(req.params.id),
+        userId: req.user.id,
+        isCompleted: false
+      },
+      data: { isCompleted: true }
+    });
+
+    res.json(reminder);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
 // 删除客户（主管及以上）
 router.delete('/:id', authenticate, async (req, res) => {
   try {
@@ -211,6 +298,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     const id = parseInt(req.params.id);
     const customer = await prisma.customer.findUnique({ where: { id } });
     if (!customer) return res.status(404).json({ message: '客户不存在' });
+    const customerName = customer.name || customer.phone;
 
     // 手动级联删除（避免 FK 约束报错）
     await prisma.$transaction(async (tx) => {
@@ -229,6 +317,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       await tx.customer.delete({ where: { id } });
     });
 
+    logActivity({ userId: req.user.id, action: 'DELETE', targetType: 'CUSTOMER', targetId: id, targetName: customerName });
     res.json({ message: '客户已删除' });
   } catch (err) {
     console.error(err);
