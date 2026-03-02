@@ -56,13 +56,24 @@ app.get('/api/health', (req, res) => {
 
 // 生产环境：托管前端静态文件
 const path = require('path');
-const frontendDist = path.join(__dirname, '../../frontend/dist');
 const fs = require('fs');
-if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+console.log('前端静态文件路径:', frontendDist);
+console.log('路径是否存在:', fs.existsSync(frontendDist));
+if (!fs.existsSync(frontendDist)) {
+  // Docker 中路径可能不同，尝试备用路径
+  const altDist = path.join(process.cwd(), '../frontend/dist');
+  console.log('尝试备用路径:', altDist, '存在:', fs.existsSync(altDist));
+}
+const distPath = fs.existsSync(frontendDist) ? frontendDist : path.join(process.cwd(), '../frontend/dist');
+if (fs.existsSync(distPath)) {
+  console.log('使用前端路径:', distPath);
+  app.use(express.static(distPath));
   app.get('*', (req, res) => {
-    res.sendFile(path.join(frontendDist, 'index.html'));
+    res.sendFile(path.join(distPath, 'index.html'));
   });
+} else {
+  console.log('警告：未找到前端静态文件！');
 }
 
 // 启动定时任务（续费提醒）
