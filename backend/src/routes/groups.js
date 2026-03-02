@@ -137,7 +137,7 @@ router.put('/:id', authenticate, async (req, res) => {
       where: { id },
       data: {
         name,
-        cost: cost ? parseFloat(cost) : undefined,
+        cost: cost !== undefined && cost !== null ? parseFloat(cost) : undefined,
         isActive,
         groupType: groupType !== undefined ? groupType : undefined,
         groupAttr: groupAttr !== undefined ? groupAttr : undefined
