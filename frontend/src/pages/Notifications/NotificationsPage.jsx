@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Card, List, Badge, Button, Space, Tag, Typography, Empty, message } from 'antd'
-import { BellOutlined, CheckOutlined } from '@ant-design/icons'
+import { BellOutlined, CheckOutlined, DeleteOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
 import { notificationApi } from '../../api'
@@ -25,10 +25,12 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState(undefined)
 
+  const notifyLayout = () => window.dispatchEvent(new Event('notification-updated'))
+
   const load = () => {
     setLoading(true)
     notificationApi.list({ isRead: filter, pageSize: 50 })
-      .then(setData)
+      .then(res => { setData(res); notifyLayout() })
       .catch(() => message.error('加载失败'))
       .finally(() => setLoading(false))
   }
@@ -43,6 +45,18 @@ export default function NotificationsPage() {
   const markAllRead = async () => {
     await notificationApi.markAllRead()
     message.success('已全部标记为已读')
+    load()
+  }
+
+  const deleteOne = async (id) => {
+    await notificationApi.delete(id)
+    message.success('已删除')
+    load()
+  }
+
+  const deleteRead = async () => {
+    await notificationApi.deleteRead()
+    message.success('已删除所有已读通知')
     load()
   }
 
@@ -78,6 +92,9 @@ export default function NotificationsPage() {
             {data.unreadCount > 0 && (
               <Button icon={<CheckOutlined />} onClick={markAllRead}>全部已读</Button>
             )}
+            {data.data.some(n => n.isRead) && (
+              <Button icon={<DeleteOutlined />} danger onClick={deleteRead}>删除已读</Button>
+            )}
           </Space>
         }
       >
@@ -102,7 +119,8 @@ export default function NotificationsPage() {
                   actions={[
                     !item.isRead && (
                       <Button size="small" icon={<CheckOutlined />} onClick={e => { e.stopPropagation(); markRead(item.id) }}>已读</Button>
-                    )
+                    ),
+                    <Button size="small" danger icon={<DeleteOutlined />} onClick={e => { e.stopPropagation(); deleteOne(item.id) }}>删除</Button>
                   ].filter(Boolean)}
                 >
                   <List.Item.Meta

@@ -240,6 +240,7 @@ export default function MarketingPage() {
       title: '操作',
       key: 'action',
       width: 180,
+      fixed: 'right',
       render: (_, record) => (
         <Space>
           <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(record)}>
@@ -282,6 +283,7 @@ export default function MarketingPage() {
         columns={columns}
         dataSource={data}
         loading={loading}
+        scroll={{ x: 900 }}
         pagination={{
           current: page,
           pageSize,

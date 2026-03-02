@@ -1,10 +1,9 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/permission');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 获取账号列表（支持搜索，viewMode: 'mine'=只看自己, 'all'=按角色可见）
 router.get('/', authenticate, async (req, res) => {

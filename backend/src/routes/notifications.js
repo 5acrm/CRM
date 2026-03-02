@@ -1,9 +1,8 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 获取我的通知
 router.get('/', authenticate, async (req, res) => {
@@ -81,6 +80,29 @@ router.put('/:id/read', authenticate, async (req, res) => {
       data: { isRead: true }
     });
     res.json({ message: '已标记为已读' });
+  } catch (err) {
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
+// 删除单条通知
+router.delete('/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await prisma.notification.delete({ where: { id, userId: req.user.id } });
+    res.json({ message: '删除成功' });
+  } catch (err) {
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
+// 删除所有已读通知
+router.delete('/batch/read', authenticate, async (req, res) => {
+  try {
+    const result = await prisma.notification.deleteMany({
+      where: { userId: req.user.id, isRead: true }
+    });
+    res.json({ message: `已删除 ${result.count} 条已读通知` });
   } catch (err) {
     res.status(500).json({ message: '服务器错误' });
   }

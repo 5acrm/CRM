@@ -110,7 +110,9 @@ export const translationApi = {
 export const notificationApi = {
   list: (params) => api.get('/notifications', { params }),
   markRead: (id) => api.put(`/notifications/${id}/read`),
-  markAllRead: () => api.put('/notifications/read-all')
+  markAllRead: () => api.put('/notifications/read-all'),
+  delete: (id) => api.delete(`/notifications/${id}`),
+  deleteRead: () => api.delete('/notifications/batch/read')
 }
 
 // 操作日志

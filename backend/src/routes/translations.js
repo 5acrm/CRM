@@ -1,10 +1,9 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { sendNotification } = require('../socket');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 获取翻译任务列表
 router.get('/', authenticate, async (req, res) => {

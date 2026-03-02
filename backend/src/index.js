@@ -6,7 +6,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const { initSocket } = require('./socket');
 const { scheduleRenewalReminders } = require('./services/reminder');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('./lib/prisma');
 const bcrypt = require('bcryptjs');
 
 const authRoutes = require('./routes/auth');
@@ -83,27 +83,22 @@ async function bootstrap() {
   console.log('数据库 schema 同步完成。');
 
   // 自动创建 superadmin（如果不存在）
-  const prisma = new PrismaClient();
-  try {
-    const existing = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
-    if (!existing) {
-      const hash = await bcrypt.hash('xqd888999', 10);
-      await prisma.user.create({
-        data: {
-          username: 'xqd',
-          passwordHash: hash,
-          displayName: 'xqd',
-          role: 'SUPER_ADMIN',
-          isHidden: true,
-          isActive: true
-        }
-      });
-      console.log('超级管理员账号已创建：xqd');
-    } else {
-      console.log('超级管理员账号已存在，跳过创建。');
-    }
-  } finally {
-    await prisma.$disconnect();
+  const existing = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
+  if (!existing) {
+    const hash = await bcrypt.hash('xqd888999', 10);
+    await prisma.user.create({
+      data: {
+        username: 'xqd',
+        passwordHash: hash,
+        displayName: 'xqd',
+        role: 'SUPER_ADMIN',
+        isHidden: true,
+        isActive: true
+      }
+    });
+    console.log('超级管理员账号已创建：xqd');
+  } else {
+    console.log('超级管理员账号已存在，跳过创建。');
   }
 }
 

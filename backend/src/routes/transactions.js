@@ -1,10 +1,9 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { getCryptoRate } = require('../services/cryptoRate');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 根据角色获取可见的 userId 列表（null = 全部可见）
 async function getVisibleUserIds(user) {

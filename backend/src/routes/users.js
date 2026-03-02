@@ -1,12 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { requireRole } = require('../middleware/permission');
 const { logActivity } = require('../services/activityLogger');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 获取当前用户可管理的下属 ID 列表
 async function getManageableSubIds(userId, role) {

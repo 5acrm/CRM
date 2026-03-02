@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message } from 'antd'
-import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined } from '@ant-design/icons'
+import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { groupApi } from '../../api'
 import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
@@ -17,6 +17,8 @@ export default function GroupsPage() {
   const [viewMode, setViewMode] = useState('mine')
   const [createModal, setCreateModal] = useState(false)
   const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
+  const [editModal, setEditModal] = useState({ open: false, group: null })
+  const [editForm] = Form.useForm()
   const [mergeModal, setMergeModal] = useState({ open: false, group: null })
   const [statsModal, setStatsModal] = useState({ open: false, group: null })
   const [statsData, setStatsData] = useState([])
@@ -54,6 +56,27 @@ export default function GroupsPage() {
       form.resetFields()
       load()
     } catch (err) { message.error(err.message || '创建失败') }
+  }
+
+  const openEdit = (group) => {
+    setEditModal({ open: true, group })
+    editForm.setFieldsValue({
+      name: group.name,
+      cost: group.cost,
+      groupType: group.groupType || undefined,
+      groupAttr: group.groupAttr || undefined,
+      isActive: group.isActive
+    })
+  }
+
+  const handleEdit = async (vals) => {
+    try {
+      await groupApi.update(editModal.group.id, vals)
+      message.success('群组修改成功')
+      setEditModal({ open: false, group: null })
+      editForm.resetFields()
+      load()
+    } catch (err) { message.error(err.message || '修改失败') }
   }
 
   const openStats = async (group, month) => {
@@ -143,6 +166,9 @@ export default function GroupsPage() {
       render: (_, r) => (
         <Space>
           <Button size="small" icon={<BarChartOutlined />} onClick={() => openStats(r)}>数据</Button>
+          {!r.isMerged && canEditCost && (
+            <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>编辑</Button>
+          )}
           {!r.isMerged && (
             <Button
               size="small"
@@ -221,6 +247,40 @@ export default function GroupsPage() {
             <Space>
               <Button type="primary" htmlType="submit">创建</Button>
               <Button onClick={() => setCreateModal(false)}>取消</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑群组 */}
+      <Modal title={`编辑群组 — ${editModal.group?.name}`} open={editModal.open} onCancel={() => setEditModal({ open: false, group: null })} footer={null}>
+        <Form form={editForm} layout="vertical" onFinish={handleEdit}>
+          <Form.Item name="name" label="群组名称" rules={[{ required: true }]}><Input /></Form.Item>
+          <Form.Item name="groupType" label="群组类型">
+            <Select allowClear placeholder="选择类型">
+              <Option value="COMMUNITY">社区</Option>
+              <Option value="REGULAR">普群</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="groupAttr" label="群组属性">
+            <Select allowClear placeholder="选择属性">
+              <Option value="CRYPTO">币</Option>
+              <Option value="STOCK">股</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="cost" label="月成本 (USD/月)">
+            <InputNumber min={0} style={{ width: '100%' }} prefix="$" />
+          </Form.Item>
+          <Form.Item name="isActive" label="状态">
+            <Select>
+              <Option value={true}>活跃</Option>
+              <Option value={false}>已停用</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">保存</Button>
+              <Button onClick={() => setEditModal({ open: false, group: null })}>取消</Button>
             </Space>
           </Form.Item>
         </Form>

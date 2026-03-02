@@ -1,10 +1,9 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { logActivity } = require('../services/activityLogger');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const ROLE_WEIGHT = { MEMBER: 1, TRANSLATOR: 1, TEAM_LEADER: 2, SUPERVISOR: 3, DEPT_MANAGER: 4, ADMIN: 5, SUPER_ADMIN: 6 };
 

@@ -34,11 +34,20 @@ export default function MainLayout() {
     })
 
     // 加载未读数
-    notificationApi.list({ isRead: false, pageSize: 1 })
-      .then(res => setUnreadCount(res.unreadCount || 0))
-      .catch(() => {})
+    const refreshUnread = () => {
+      notificationApi.list({ isRead: false, pageSize: 1 })
+        .then(res => setUnreadCount(res.unreadCount || 0))
+        .catch(() => {})
+    }
+    refreshUnread()
 
-    return () => { socket.disconnect() }
+    // 监听通知页面的已读/删除事件，实时更新红色提醒
+    window.addEventListener('notification-updated', refreshUnread)
+
+    return () => {
+      socket.disconnect()
+      window.removeEventListener('notification-updated', refreshUnread)
+    }
   }, [user.id])
 
   const canAdmin = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']

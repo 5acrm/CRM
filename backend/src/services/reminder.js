@@ -1,8 +1,6 @@
 const cron = require('node-cron');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { sendNotification } = require('../socket');
-
-const prisma = new PrismaClient();
 
 function scheduleRenewalReminders(io) {
   // 每天早上 9:00 检查 3 天内到期的账号

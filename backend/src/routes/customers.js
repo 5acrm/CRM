@@ -1,11 +1,10 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { authenticate } = require('../middleware/auth');
 const { buildVisibilityFilter, canMoveCustomer, ROLE_WEIGHT } = require('../middleware/permission');
 const { logActivity } = require('../services/activityLogger');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // 搜索/列表客户（viewMode: 'mine'=只看自己, 'all'=按角色可见）
 router.get('/', authenticate, async (req, res) => {
