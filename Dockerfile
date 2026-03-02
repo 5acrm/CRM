@@ -16,6 +16,9 @@ RUN cd backend && npm ci
 COPY backend/ ./backend/
 RUN cd backend && npx prisma generate
 
+# 将前端构建产物复制到后端目录
+RUN cp -r /app/frontend/dist /app/backend/public
+
 WORKDIR /app/backend
 
 ENV NODE_ENV=production
