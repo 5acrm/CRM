@@ -97,6 +97,9 @@ model WaGroup {
   groupType String?  // COMMUNITY | REGULAR (社区 | 普群)
   groupAttr String?  // CRYPTO | STOCK (币 | 股)
   remark    String?   // 备注
+  totalMembers  Int      @default(0)   // 群总人数
+  ownAccounts   Int      @default(0)   // 自己账号数
+  customerCount Int      @default(0)   // 客户人数
   isMerged  Boolean  @default(false)
   mergedIntoId Int?
   mergedInto   WaGroup?  @relation("GroupMerge", fields: [mergedIntoId], references: [id])
@@ -116,14 +119,14 @@ model GroupDailyStat {
   group         WaGroup  @relation(fields: [groupId], references: [id])
   date          DateTime
 
-  totalMembers  Int      @default(0)
-  realCustomers Int      @default(0)
-  ownAccounts   Int      @default(0)
-  dailyExits    Int      @default(0)
-  viewers       Int      @default(0)
-  inquiries     Int      @default(0)
-  conversions   Int      @default(0)
-  depositUsd    Float    @default(0)
+  // 累积型数据
+  dailyExits    Int      @default(0)   // 退群人数
+  conversions   Int      @default(0)   // 成交人数
+  depositUsd    Float    @default(0)   // 入金金额
+  // 当日型数据
+  viewers       Int      @default(0)   // 看群人数
+  inquiries     Int      @default(0)   // 咨询人数
+  intentClients Int      @default(0)   // 意向客户
 
   createdAt     DateTime @default(now())
 

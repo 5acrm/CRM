@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message, Tooltip } from 'antd'
-import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons'
+import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message, Divider } from 'antd'
+import { PlusOutlined, BarChartOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined, SearchOutlined, MergeCellsOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { groupApi, userApi } from '../../api'
 import useAuthStore, { ROLE_WEIGHT } from '../../store/auth'
@@ -16,62 +16,72 @@ export default function GroupsPage() {
   const [groups, setGroups] = useState([])
   const [loading, setLoading] = useState(false)
   const [viewMode, setViewMode] = useState('mine')
-  const [createModal, setCreateModal] = useState(false)
   const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
   const canFilterGroup = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['SUPERVISOR']
-  const [editModal, setEditModal] = useState({ open: false, group: null })
-  const [editForm] = Form.useForm()
-  const [mergeModal, setMergeModal] = useState({ open: false, group: null })
-  const [statsModal, setStatsModal] = useState({ open: false, group: null })
-  const [statsData, setStatsData] = useState([])
-  const [addStatsModal, setAddStatsModal] = useState({ open: false, groupId: null })
-  const [summary, setSummary] = useState(null)
-  const [summaryMonth, setSummaryMonth] = useState(dayjs())
-  const [missingStatsIds, setMissingStatsIds] = useState(new Set())
-  const [form] = Form.useForm()
-  const [statsForm] = Form.useForm()
-  const [mergeForm] = Form.useForm()
   const canEditCost = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
 
-  // 搜索状态
+  // 搜索
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchDateRange, setSearchDateRange] = useState(null)
   const [searchGroupNumber, setSearchGroupNumber] = useState(undefined)
   const [subordinates, setSubordinates] = useState([])
 
-  // 提取可用小组编号
+  // 新建群组
+  const [createModal, setCreateModal] = useState(false)
+  const [form] = Form.useForm()
+
+  // 编辑群组（含合并）
+  const [editModal, setEditModal] = useState({ open: false, group: null })
+  const [editForm] = Form.useForm()
+  const [mergeTargetId, setMergeTargetId] = useState(undefined)
+
+  // 数据录入弹窗
+  const [dataModal, setDataModal] = useState({ open: false, group: null })
+  const [dataStats, setDataStats] = useState([])
+  const [dataDate, setDataDate] = useState(dayjs())
+  const [dataForm] = Form.useForm()
+
+  // 小组编号
   const groupNumbers = useMemo(() => {
-    const nums = [...new Set(subordinates.filter(u => u.groupNumber).map(u => u.groupNumber))].sort((a, b) => a - b)
-    return nums
+    return [...new Set(subordinates.filter(u => u.groupNumber).map(u => u.groupNumber))].sort((a, b) => a - b)
   }, [subordinates])
 
-  // 汇总统计（排除已合并群组）
+  // 顶部汇总
   const summaryStats = useMemo(() => {
     const active = groups.filter(g => !g.isMerged)
     return {
       totalGroups: active.length,
       totalCost: active.reduce((sum, g) => sum + (g.cost || 0), 0),
-      totalCustomers: active.reduce((sum, g) => sum + (g._count?.customers || 0), 0)
+      totalCustomers: active.reduce((sum, g) => sum + (g.customerCount || 0), 0)
     }
   }, [groups])
 
-  // 每日数据汇总统计（弹窗用）
-  const dailyStatsAgg = useMemo(() => {
-    if (!statsData || statsData.length === 0) return null
-    const latest = statsData[0] // 按日期倒序，第一条是最新
-    const totalExits = statsData.reduce((s, d) => s + (d.dailyExits || 0), 0)
-    const totalViewers = statsData.reduce((s, d) => s + (d.viewers || 0), 0)
-    const totalInquiries = statsData.reduce((s, d) => s + (d.inquiries || 0), 0)
-    const totalConversions = statsData.reduce((s, d) => s + (d.conversions || 0), 0)
-    const latestTotal = latest.totalMembers || 0
-    const latestReal = latest.realCustomers || 0
+  // 当前选中日期是否已有数据
+  const existingRecord = useMemo(() => {
+    if (!dataStats || dataStats.length === 0) return null
+    return dataStats.find(s => dayjs(s.date).format('YYYY-MM-DD') === dataDate.format('YYYY-MM-DD')) || null
+  }, [dataStats, dataDate])
+
+  // 数据弹窗汇总
+  const dataAgg = useMemo(() => {
+    if (!dataStats || dataStats.length === 0 || !dataModal.group) return null
+    const totalExits = dataStats.reduce((s, d) => s + (d.dailyExits || 0), 0)
+    const totalConversions = dataStats.reduce((s, d) => s + (d.conversions || 0), 0)
+    const totalDeposit = dataStats.reduce((s, d) => s + (d.depositUsd || 0), 0)
+    const cc = dataModal.group.customerCount || 0
+    const todayRecord = dataStats.find(s => dayjs(s.date).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD'))
     return {
-      latestTotal, latestReal, totalExits, totalViewers, totalInquiries, totalConversions,
-      inquiryRate: totalViewers > 0 ? (totalInquiries / totalViewers * 100).toFixed(1) : '0',
-      conversionRate: totalInquiries > 0 ? (totalConversions / totalInquiries * 100).toFixed(1) : '0',
-      exitRate: latestTotal > 0 ? (totalExits / latestTotal * 100).toFixed(1) : '0'
+      totalExits, totalConversions, totalDeposit,
+      exitRate: cc > 0 ? (totalExits / cc * 100).toFixed(1) : '0.0',
+      conversionRate: cc > 0 ? (totalConversions / cc * 100).toFixed(1) : '0.0',
+      todayViewers: todayRecord?.viewers || 0,
+      todayInquiries: todayRecord?.inquiries || 0,
+      todayIntentClients: todayRecord?.intentClients || 0,
+      viewerRate: cc > 0 && todayRecord ? ((todayRecord.viewers || 0) / cc * 100).toFixed(1) : '0.0',
+      inquiryRate: cc > 0 && todayRecord ? ((todayRecord.inquiries || 0) / cc * 100).toFixed(1) : '0.0',
+      intentRate: cc > 0 && todayRecord ? ((todayRecord.intentClients || 0) / cc * 100).toFixed(1) : '0.0'
     }
-  }, [statsData])
+  }, [dataStats, dataModal.group])
 
   useEffect(() => {
     if (canFilterGroup) userApi.subordinates().then(setSubordinates).catch(() => {})
@@ -89,28 +99,20 @@ export default function GroupsPage() {
 
   useEffect(() => { load() }, [viewMode])
 
-  useEffect(() => {
-    groupApi.missingStats().then(data => {
-      setMissingStatsIds(new Set(data.map(g => g.id)))
-    }).catch(() => {})
-  }, [])
-
   const handleSearch = () => { load() }
   const handleResetSearch = () => {
     setSearchKeyword('')
     setSearchDateRange(null)
     setSearchGroupNumber(undefined)
-    // 重新加载不带筛选条件
     setLoading(true)
     groupApi.list({ viewMode }).then(setGroups).catch(() => message.error('加载失败')).finally(() => setLoading(false))
   }
 
+  // 新建群组
   const handleCreate = async (vals) => {
     try {
       const submitData = { ...vals }
-      if (vals.createdDate) {
-        submitData.createdDate = vals.createdDate.toISOString()
-      }
+      if (vals.createdDate) submitData.createdDate = vals.createdDate.toISOString()
       await groupApi.create(submitData)
       message.success('群组创建成功')
       setCreateModal(false)
@@ -119,14 +121,19 @@ export default function GroupsPage() {
     } catch (err) { message.error(err.message || '创建失败') }
   }
 
+  // 编辑群组
   const openEdit = (group) => {
     setEditModal({ open: true, group })
+    setMergeTargetId(undefined)
     editForm.setFieldsValue({
       name: group.name,
       cost: group.cost,
       groupType: group.groupType || undefined,
       groupAttr: group.groupAttr || undefined,
       isActive: group.isActive,
+      totalMembers: group.totalMembers || 0,
+      ownAccounts: group.ownAccounts || 0,
+      customerCount: group.customerCount || 0,
       remark: group.remark || ''
     })
   }
@@ -141,65 +148,119 @@ export default function GroupsPage() {
     } catch (err) { message.error(err.message || '修改失败') }
   }
 
-  const openStats = async (group, month) => {
-    const m = month || summaryMonth
-    setStatsModal({ open: true, group })
-    const [stats, sum] = await Promise.all([
-      groupApi.stats(group.id),
-      groupApi.summary(group.id, { month: m.format('YYYY-MM') })
-    ])
-    setStatsData(stats)
-    setSummary(sum)
-  }
-
-  const handleMonthChange = async (val) => {
-    setSummaryMonth(val)
-    if (statsModal.group && val) {
-      const sum = await groupApi.summary(statsModal.group.id, { month: val.format('YYYY-MM') })
-      setSummary(sum)
-    }
-  }
-
-  const handleAddStats = async (vals) => {
+  const handleMerge = async () => {
+    if (!mergeTargetId) return message.error('请选择目标群组')
     try {
-      await groupApi.addStats(statsModal.group.id, {
-        ...vals,
-        date: vals.date ? vals.date.format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD')
-      })
-      message.success('数据已保存')
-      setAddStatsModal({ open: false, groupId: null })
-      statsForm.resetFields()
-      openStats(statsModal.group)
-    } catch (err) { message.error(err.message || '保存失败') }
-  }
-
-  const handleMerge = async (vals) => {
-    try {
-      await groupApi.merge(mergeModal.group.id, { targetGroupId: vals.targetGroupId })
+      await groupApi.merge(editModal.group.id, { targetGroupId: mergeTargetId })
       message.success('合并成功')
-      setMergeModal({ open: false, group: null })
-      mergeForm.resetFields()
+      setEditModal({ open: false, group: null })
+      setMergeTargetId(undefined)
       load()
     } catch (err) { message.error(err.message || '合并失败') }
   }
 
+  // 数据录入弹窗
+  const openDataModal = async (group) => {
+    setDataModal({ open: true, group })
+    setDataDate(dayjs())
+    dataForm.resetFields()
+    try {
+      const stats = await groupApi.stats(group.id)
+      setDataStats(stats)
+      const todayRecord = stats.find(s => dayjs(s.date).format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD'))
+      if (todayRecord) {
+        dataForm.setFieldsValue({
+          dailyExits: todayRecord.dailyExits,
+          conversions: todayRecord.conversions,
+          depositUsd: todayRecord.depositUsd,
+          viewers: todayRecord.viewers,
+          inquiries: todayRecord.inquiries,
+          intentClients: todayRecord.intentClients
+        })
+      }
+    } catch { message.error('加载数据失败') }
+  }
+
+  const handleDateChange = (date) => {
+    if (!date) return
+    setDataDate(date)
+    const record = dataStats.find(s => dayjs(s.date).format('YYYY-MM-DD') === date.format('YYYY-MM-DD'))
+    if (record) {
+      dataForm.setFieldsValue({
+        dailyExits: record.dailyExits,
+        conversions: record.conversions,
+        depositUsd: record.depositUsd,
+        viewers: record.viewers,
+        inquiries: record.inquiries,
+        intentClients: record.intentClients
+      })
+    } else {
+      dataForm.setFieldsValue({
+        dailyExits: undefined,
+        conversions: undefined,
+        depositUsd: undefined,
+        viewers: undefined,
+        inquiries: undefined,
+        intentClients: undefined
+      })
+    }
+  }
+
+  const handleEditHistoryRow = (record) => {
+    setDataDate(dayjs(record.date))
+    dataForm.setFieldsValue({
+      dailyExits: record.dailyExits,
+      conversions: record.conversions,
+      depositUsd: record.depositUsd,
+      viewers: record.viewers,
+      inquiries: record.inquiries,
+      intentClients: record.intentClients
+    })
+  }
+
+  const handleSubmitData = async (vals) => {
+    try {
+      await groupApi.addStats(dataModal.group.id, {
+        ...vals,
+        date: dataDate.format('YYYY-MM-DD')
+      })
+      message.success(existingRecord ? '数据已修改' : '数据已提交')
+      const stats = await groupApi.stats(dataModal.group.id)
+      setDataStats(stats)
+      load()
+    } catch (err) { message.error(err.message || '保存失败') }
+  }
+
+  const mergeTargetGroups = groups.filter(g => !g.isMerged && g.isActive && g.id !== editModal.group?.id)
+
+  // 百分比渲染辅助
+  const renderWithRate = (val, customerCount, color) => {
+    const rate = customerCount > 0 ? (val / customerCount * 100).toFixed(1) : '0.0'
+    return (
+      <div>
+        <div style={{ fontWeight: 500, color }}>{val}</div>
+        <div style={{ fontSize: 11, color: '#999' }}>{rate}%</div>
+      </div>
+    )
+  }
+
+  // 主表列
   const columns = [
     {
       title: '群组名称',
       dataIndex: 'name',
+      width: 140,
+      fixed: 'left',
       render: (name, r) => (
-        <Space>
-          <a
-            onClick={() => openStats(r)}
-            style={{ color: r.isMerged ? '#bbb' : undefined }}
-          >
-            {name}
-          </a>
-          {r.isMerged && r.mergedInto && (
-            <Tag color="default" style={{ fontSize: 11 }}>已合并到：{r.mergedInto.name}</Tag>
-          )}
-          {missingStatsIds.has(r.id) && (
-            <Tag color="red" icon={<WarningOutlined />}>未更新今日数据</Tag>
+        <Space direction="vertical" size={0}>
+          <Space size={4}>
+            <a onClick={() => openDataModal(r)} style={{ color: r.isMerged ? '#bbb' : undefined }}>{name}</a>
+            {r.isMerged && r.mergedInto && (
+              <Tag color="default" style={{ fontSize: 10, lineHeight: '16px' }}>→{r.mergedInto.name}</Tag>
+            )}
+          </Space>
+          {!r.isMerged && r.isActive && !r.todayStats && (
+            <Tag color="red" icon={<WarningOutlined />} style={{ fontSize: 10, lineHeight: '16px', marginTop: 2 }}>未更新</Tag>
           )}
         </Space>
       )
@@ -208,68 +269,110 @@ export default function GroupsPage() {
       title: '类型/属性',
       width: 80,
       render: (_, r) => (
-        <Space size={4}>
-          {r.groupType && <Tag color="blue">{GROUP_TYPE_LABELS[r.groupType] || r.groupType}</Tag>}
-          {r.groupAttr && <Tag color="purple">{GROUP_ATTR_LABELS[r.groupAttr] || r.groupAttr}</Tag>}
+        <Space size={2}>
+          {r.groupType && <Tag color="blue" style={{ margin: 0 }}>{GROUP_TYPE_LABELS[r.groupType] || r.groupType}</Tag>}
+          {r.groupAttr && <Tag color="purple" style={{ margin: 0 }}>{GROUP_ATTR_LABELS[r.groupAttr] || r.groupAttr}</Tag>}
         </Space>
       )
     },
     { title: '负责人', dataIndex: 'user', width: 70, render: u => u?.displayName || '-' },
-    { title: '月成本', dataIndex: 'cost', width: 80, render: v => `$${v?.toFixed(0)}/月` },
-    { title: '客户数', dataIndex: '_count', width: 70, render: c => c?.customers || 0 },
+    { title: '群总人数', dataIndex: 'totalMembers', width: 70, align: 'right', render: v => v || 0 },
+    { title: '自己账号', dataIndex: 'ownAccounts', width: 70, align: 'right', render: v => v || 0 },
+    { title: '客户人数', dataIndex: 'customerCount', width: 70, align: 'right', render: v => v || 0 },
     {
-      title: '备注',
-      dataIndex: 'remark',
-      width: 150,
-      ellipsis: true,
-      render: v => v ? <Tooltip title={v}><span>{v}</span></Tooltip> : '-'
+      title: '退群总数',
+      width: 85,
+      align: 'right',
+      render: (_, r) => renderWithRate(r.cumulativeStats?.dailyExits || 0, r.customerCount, '#cf1322')
     },
+    {
+      title: '成交总数',
+      width: 85,
+      align: 'right',
+      render: (_, r) => renderWithRate(r.cumulativeStats?.conversions || 0, r.customerCount, '#3f8600')
+    },
+    {
+      title: '入金总额',
+      width: 85,
+      align: 'right',
+      render: (_, r) => {
+        const val = r.cumulativeStats?.depositUsd || 0
+        return val > 0 ? <span style={{ color: '#3f8600', fontWeight: 500 }}>${val.toFixed(0)}</span> : '-'
+      }
+    },
+    {
+      title: '今日看群',
+      width: 85,
+      align: 'right',
+      render: (_, r) => {
+        if (!r.todayStats) return <span style={{ color: '#ccc' }}>-</span>
+        return renderWithRate(r.todayStats.viewers || 0, r.customerCount)
+      }
+    },
+    {
+      title: '今日咨询',
+      width: 85,
+      align: 'right',
+      render: (_, r) => {
+        if (!r.todayStats) return <span style={{ color: '#ccc' }}>-</span>
+        return renderWithRate(r.todayStats.inquiries || 0, r.customerCount, '#1677ff')
+      }
+    },
+    {
+      title: '今日意向',
+      width: 85,
+      align: 'right',
+      render: (_, r) => {
+        if (!r.todayStats) return <span style={{ color: '#ccc' }}>-</span>
+        return renderWithRate(r.todayStats.intentClients || 0, r.customerCount, '#faad14')
+      }
+    },
+    { title: '月成本', dataIndex: 'cost', width: 80, align: 'right', render: v => `$${v?.toFixed(0)}` },
     {
       title: '状态',
       width: 60,
       render: (_, r) => r.isMerged
         ? <Tag color="default">已合并</Tag>
-        : r.isActive ? <Tag color="green">活跃</Tag> : <Tag>已停用</Tag>
+        : r.isActive ? <Tag color="green">活跃</Tag> : <Tag>停用</Tag>
     },
-    { title: '创建时间', dataIndex: 'createdAt', width: 100, render: v => dayjs(v).format('YYYY-MM-DD') },
     {
       title: '操作',
-      width: 180,
+      width: 120,
       fixed: 'right',
       render: (_, r) => (
         <Space>
-          <Button size="small" icon={<BarChartOutlined />} onClick={() => openStats(r)}>数据</Button>
+          <Button size="small" icon={<BarChartOutlined />} onClick={() => openDataModal(r)}>数据</Button>
           {!r.isMerged && canEditCost && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>编辑</Button>
-          )}
-          {!r.isMerged && (
-            <Button
-              size="small"
-              icon={<MergeCellsOutlined />}
-              onClick={() => { setMergeModal({ open: true, group: r }); mergeForm.resetFields() }}
-            >合并</Button>
           )}
         </Space>
       )
     }
   ]
 
-  const statColumns = [
-    { title: '日期', dataIndex: 'date', render: v => dayjs(v).format('YYYY-MM-DD') },
-    { title: '总人数', dataIndex: 'totalMembers' },
-    { title: '真实客户', dataIndex: 'realCustomers' },
-    { title: '自己账号', dataIndex: 'ownAccounts' },
-    { title: '退群人数', dataIndex: 'dailyExits' },
-    { title: '看群人数', dataIndex: 'viewers' },
-    { title: '咨询人数', dataIndex: 'inquiries' },
-    { title: '成交人数', dataIndex: 'conversions' },
-    { title: '入金(USD)', dataIndex: 'depositUsd', render: v => `$${v?.toFixed(2)}` }
+  // 历史记录表列
+  const historyColumns = [
+    { title: '日期', dataIndex: 'date', width: 100, render: v => dayjs(v).format('YYYY-MM-DD') },
+    { title: '退群', dataIndex: 'dailyExits', width: 60, align: 'right' },
+    { title: '成交', dataIndex: 'conversions', width: 60, align: 'right' },
+    { title: '入金', dataIndex: 'depositUsd', width: 80, align: 'right', render: v => v > 0 ? `$${v.toFixed(0)}` : '-' },
+    { title: '看群', dataIndex: 'viewers', width: 60, align: 'right' },
+    { title: '咨询', dataIndex: 'inquiries', width: 60, align: 'right' },
+    { title: '意向', dataIndex: 'intentClients', width: 60, align: 'right' },
+    {
+      title: '操作',
+      width: 60,
+      render: (_, r) => <Button type="link" size="small" onClick={() => handleEditHistoryRow(r)}>编辑</Button>
+    }
   ]
-
-  const mergeTargetGroups = groups.filter(g => !g.isMerged && g.isActive && g.id !== mergeModal.group?.id)
 
   return (
     <div style={{ padding: 24 }}>
+      <style>{`
+        .groups-table .ant-table-tbody > tr:nth-child(even) > td { background: #fafafa; }
+        .groups-table .row-merged > td { opacity: 0.5; }
+      `}</style>
+
       {canViewTeam && (
         <Card size="small" style={{ marginBottom: 12 }}>
           <Space>
@@ -282,7 +385,6 @@ export default function GroupsPage() {
         </Card>
       )}
 
-      {/* 搜索栏 */}
       <Card size="small" style={{ marginBottom: 12 }}>
         <Space wrap>
           <Input
@@ -294,19 +396,9 @@ export default function GroupsPage() {
             style={{ width: 180 }}
             onPressEnter={handleSearch}
           />
-          <RangePicker
-            value={searchDateRange}
-            onChange={setSearchDateRange}
-            placeholder={['开始日期', '结束日期']}
-          />
+          <RangePicker value={searchDateRange} onChange={setSearchDateRange} placeholder={['开始日期', '结束日期']} />
           {viewMode === 'all' && canFilterGroup && groupNumbers.length > 0 && (
-            <Select
-              placeholder="小组"
-              allowClear
-              value={searchGroupNumber}
-              onChange={setSearchGroupNumber}
-              style={{ width: 90 }}
-            >
+            <Select placeholder="小组" allowClear value={searchGroupNumber} onChange={setSearchGroupNumber} style={{ width: 90 }}>
               {groupNumbers.map(n => <Option key={n} value={n}>{n}组</Option>)}
             </Select>
           )}
@@ -330,41 +422,74 @@ export default function GroupsPage() {
         }
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>新建群组</Button>}
       >
-        <Table
-          columns={columns}
-          dataSource={groups}
-          rowKey="id"
-          loading={loading}
-          scroll={{ x: 1000 }}
-          rowClassName={r => r.isMerged ? 'row-disabled' : ''}
-        />
+        <div className="groups-table">
+          <Table
+            columns={columns}
+            dataSource={groups}
+            rowKey="id"
+            loading={loading}
+            scroll={{ x: 1400 }}
+            size="small"
+            rowClassName={r => r.isMerged ? 'row-merged' : ''}
+            pagination={{ pageSize: 20, showSizeChanger: false }}
+          />
+        </div>
       </Card>
 
-      {/* 创建群组 */}
-      <Modal title="新建群组" open={createModal} onCancel={() => setCreateModal(false)} footer={null}>
+      {/* 新建群组 */}
+      <Modal title="新建群组" open={createModal} onCancel={() => setCreateModal(false)} footer={null} width={600}>
         <Form form={form} layout="vertical" onFinish={handleCreate}>
-          <Form.Item name="name" label="群组名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="groupType" label="群组类型">
-            <Select allowClear placeholder="选择类型">
-              <Option value="COMMUNITY">社区</Option>
-              <Option value="REGULAR">普群</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="groupAttr" label="群组属性">
-            <Select allowClear placeholder="选择属性">
-              <Option value="CRYPTO">币</Option>
-              <Option value="STOCK">股</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="createdDate" label="创建日期" initialValue={dayjs()}>
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="cost" label="月成本 (USD/月)" initialValue={3500}>
-            <InputNumber min={0} style={{ width: '100%' }} prefix="$" disabled={!canEditCost} />
-          </Form.Item>
-          <Form.Item name="remark" label="备注">
-            <Input.TextArea rows={2} placeholder="群组备注" maxLength={500} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="name" label="群组名称" rules={[{ required: true }]}><Input /></Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="groupType" label="类型">
+                <Select allowClear placeholder="选择">
+                  <Option value="COMMUNITY">社区</Option>
+                  <Option value="REGULAR">普群</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="groupAttr" label="属性">
+                <Select allowClear placeholder="选择">
+                  <Option value="CRYPTO">币</Option>
+                  <Option value="STOCK">股</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="totalMembers" label="群总人数" initialValue={0}>
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="ownAccounts" label="自己账号数" initialValue={0}>
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="customerCount" label="客户人数" initialValue={0}>
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="cost" label="月成本 (USD)" initialValue={3500}>
+                <InputNumber min={0} style={{ width: '100%' }} prefix="$" disabled={!canEditCost} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="createdDate" label="创建日期" initialValue={dayjs()}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="remark" label="备注">
+                <Input.TextArea rows={2} placeholder="群组备注" maxLength={500} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">创建</Button>
@@ -374,34 +499,63 @@ export default function GroupsPage() {
         </Form>
       </Modal>
 
-      {/* 编辑群组 */}
-      <Modal title={`编辑群组 — ${editModal.group?.name}`} open={editModal.open} onCancel={() => setEditModal({ open: false, group: null })} footer={null}>
+      {/* 编辑群组 + 合并 */}
+      <Modal title={`编辑群组 — ${editModal.group?.name}`} open={editModal.open} onCancel={() => setEditModal({ open: false, group: null })} footer={null} width={600}>
         <Form form={editForm} layout="vertical" onFinish={handleEdit}>
-          <Form.Item name="name" label="群组名称" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="groupType" label="群组类型">
-            <Select allowClear placeholder="选择类型">
-              <Option value="COMMUNITY">社区</Option>
-              <Option value="REGULAR">普群</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="groupAttr" label="群组属性">
-            <Select allowClear placeholder="选择属性">
-              <Option value="CRYPTO">币</Option>
-              <Option value="STOCK">股</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="cost" label="月成本 (USD/月)">
-            <InputNumber min={0} style={{ width: '100%' }} prefix="$" />
-          </Form.Item>
-          <Form.Item name="isActive" label="状态">
-            <Select>
-              <Option value={true}>活跃</Option>
-              <Option value={false}>已停用</Option>
-            </Select>
-          </Form.Item>
-          <Form.Item name="remark" label="备注">
-            <Input.TextArea rows={2} placeholder="群组备注" maxLength={500} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="name" label="群组名称" rules={[{ required: true }]}><Input /></Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="groupType" label="类型">
+                <Select allowClear placeholder="选择">
+                  <Option value="COMMUNITY">社区</Option>
+                  <Option value="REGULAR">普群</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="groupAttr" label="属性">
+                <Select allowClear placeholder="选择">
+                  <Option value="CRYPTO">币</Option>
+                  <Option value="STOCK">股</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="totalMembers" label="群总人数">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="ownAccounts" label="自己账号数">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="customerCount" label="客户人数">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="cost" label="月成本 (USD)">
+                <InputNumber min={0} style={{ width: '100%' }} prefix="$" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="isActive" label="状态">
+                <Select>
+                  <Option value={true}>活跃</Option>
+                  <Option value={false}>已停用</Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={24}>
+              <Form.Item name="remark" label="备注">
+                <Input.TextArea rows={2} placeholder="群组备注" maxLength={500} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit">保存</Button>
@@ -409,107 +563,160 @@ export default function GroupsPage() {
             </Space>
           </Form.Item>
         </Form>
-      </Modal>
 
-      {/* 合并群组 */}
-      <Modal
-        title={`合并群组 — ${mergeModal.group?.name}`}
-        open={mergeModal.open}
-        onCancel={() => setMergeModal({ open: false, group: null })}
-        footer={null}
-      >
-        <p style={{ color: '#666', marginBottom: 16 }}>
-          合并后，「{mergeModal.group?.name}」将标记为已合并并显示为灰色，原有数据全部保留。
-        </p>
-        <Form form={mergeForm} layout="vertical" onFinish={handleMerge}>
-          <Form.Item name="targetGroupId" label="合并到（目标群组）" rules={[{ required: true, message: '请选择目标群组' }]}>
-            <Select placeholder="选择目标群组" showSearch filterOption={(input, option) =>
-              option.children?.toLowerCase().includes(input.toLowerCase())
-            }>
-              {mergeTargetGroups.map(g => (
-                <Option key={g.id} value={g.id}>{g.name}</Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item>
-            <Space>
-              <Button type="primary" danger htmlType="submit">确认合并</Button>
-              <Button onClick={() => setMergeModal({ open: false, group: null })}>取消</Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 群组数据统计 */}
-      <Modal
-        title={`群组数据 — ${statsModal.group?.name}`}
-        open={statsModal.open}
-        onCancel={() => setStatsModal({ open: false, group: null })}
-        footer={null}
-        width={960}
-      >
-        <Space style={{ marginBottom: 16 }}>
-          <span>查看月份：</span>
-          <DatePicker
-            picker="month"
-            value={summaryMonth}
-            onChange={handleMonthChange}
-            allowClear={false}
-          />
-          <span style={{ color: '#999', fontSize: 12 }}>（成本按该月单月计算）</span>
-        </Space>
-
-        {summary && (
-          <Row gutter={16} style={{ marginBottom: 16 }}>
-            <Col span={6}><Statistic title="客户总数" value={summary.customerCount} /></Col>
-            <Col span={6}><Statistic title={`${summaryMonth?.format('M')}月入金`} value={summary.totalDepositUsd} prefix="$" precision={2} valueStyle={{ color: '#3f8600' }} /></Col>
-            <Col span={6}><Statistic title="群组月成本" value={summary.groupCost} prefix="$" precision={0} valueStyle={{ color: '#cf1322' }} /></Col>
-            <Col span={6}><Statistic title="净利润" value={summary.netProfit} prefix="$" precision={2} valueStyle={{ color: summary.netProfit >= 0 ? '#3f8600' : '#cf1322' }} /></Col>
-          </Row>
+        {!editModal.group?.isMerged && (
+          <>
+            <Divider />
+            <div>
+              <h4 style={{ color: '#999', marginBottom: 12 }}>
+                <MergeCellsOutlined /> 合并群组
+              </h4>
+              <p style={{ color: '#999', fontSize: 12, marginBottom: 8 }}>
+                合并后此群组将标记为已合并并显示为灰色，原有数据保留。
+              </p>
+              <Space>
+                <Select
+                  placeholder="选择目标群组"
+                  value={mergeTargetId}
+                  onChange={setMergeTargetId}
+                  style={{ width: 200 }}
+                  showSearch
+                  filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+                >
+                  {mergeTargetGroups.map(g => <Option key={g.id} value={g.id}>{g.name}</Option>)}
+                </Select>
+                <Button danger onClick={handleMerge}>确认合并</Button>
+              </Space>
+            </div>
+          </>
         )}
+      </Modal>
 
-        {dailyStatsAgg && (
+      {/* 数据录入弹窗 */}
+      <Modal
+        title={`群组数据 — ${dataModal.group?.name}`}
+        open={dataModal.open}
+        onCancel={() => { setDataModal({ open: false, group: null }); setDataStats([]) }}
+        footer={null}
+        width={900}
+      >
+        {/* 基础信息 */}
+        <Card size="small" style={{ marginBottom: 16, background: '#f5f5f5' }}>
+          <Row gutter={24}>
+            <Col span={8}>
+              <Statistic title="群总人数" value={dataModal.group?.totalMembers || 0} valueStyle={{ fontSize: 20 }} />
+            </Col>
+            <Col span={8}>
+              <Statistic title="自己账号数" value={dataModal.group?.ownAccounts || 0} valueStyle={{ fontSize: 20 }} />
+            </Col>
+            <Col span={8}>
+              <Statistic title="客户人数" value={dataModal.group?.customerCount || 0} valueStyle={{ fontSize: 20 }} />
+            </Col>
+          </Row>
+        </Card>
+
+        {/* 汇总统计 */}
+        {dataAgg && (
           <Card size="small" style={{ marginBottom: 16, background: '#fafafa' }}>
             <Row gutter={16}>
-              <Col span={4}><Statistic title="最新总人数" value={dailyStatsAgg.latestTotal} valueStyle={{ fontSize: 18 }} /></Col>
-              <Col span={4}><Statistic title="真实客户" value={dailyStatsAgg.latestReal} valueStyle={{ fontSize: 18 }} /></Col>
-              <Col span={4}><Statistic title="累计退群" value={dailyStatsAgg.totalExits} valueStyle={{ fontSize: 18, color: '#cf1322' }} suffix={<span style={{ fontSize: 12, color: '#999' }}>({dailyStatsAgg.exitRate}%)</span>} /></Col>
-              <Col span={4}><Statistic title="累计看群" value={dailyStatsAgg.totalViewers} valueStyle={{ fontSize: 18 }} /></Col>
-              <Col span={4}><Statistic title="累计咨询" value={dailyStatsAgg.totalInquiries} valueStyle={{ fontSize: 18, color: '#1677ff' }} suffix={<span style={{ fontSize: 12, color: '#999' }}>({dailyStatsAgg.inquiryRate}%)</span>} /></Col>
-              <Col span={4}><Statistic title="累计成交" value={dailyStatsAgg.totalConversions} valueStyle={{ fontSize: 18, color: '#3f8600' }} suffix={<span style={{ fontSize: 12, color: '#999' }}>({dailyStatsAgg.conversionRate}%)</span>} /></Col>
+              <Col span={4}>
+                <Statistic title="退群总数" value={dataAgg.totalExits} valueStyle={{ fontSize: 16, color: '#cf1322' }}
+                  suffix={<span style={{ fontSize: 11, color: '#999' }}>({dataAgg.exitRate}%)</span>} />
+              </Col>
+              <Col span={4}>
+                <Statistic title="成交总数" value={dataAgg.totalConversions} valueStyle={{ fontSize: 16, color: '#3f8600' }}
+                  suffix={<span style={{ fontSize: 11, color: '#999' }}>({dataAgg.conversionRate}%)</span>} />
+              </Col>
+              <Col span={4}>
+                <Statistic title="入金总额" value={dataAgg.totalDeposit} valueStyle={{ fontSize: 16 }} prefix="$" precision={0} />
+              </Col>
+              <Col span={4}>
+                <Statistic title="今日看群" value={dataAgg.todayViewers} valueStyle={{ fontSize: 16 }}
+                  suffix={<span style={{ fontSize: 11, color: '#999' }}>({dataAgg.viewerRate}%)</span>} />
+              </Col>
+              <Col span={4}>
+                <Statistic title="今日咨询" value={dataAgg.todayInquiries} valueStyle={{ fontSize: 16, color: '#1677ff' }}
+                  suffix={<span style={{ fontSize: 11, color: '#999' }}>({dataAgg.inquiryRate}%)</span>} />
+              </Col>
+              <Col span={4}>
+                <Statistic title="今日意向" value={dataAgg.todayIntentClients} valueStyle={{ fontSize: 16, color: '#faad14' }}
+                  suffix={<span style={{ fontSize: 11, color: '#999' }}>({dataAgg.intentRate}%)</span>} />
+              </Col>
             </Row>
           </Card>
         )}
 
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddStatsModal({ open: true, groupId: statsModal.group?.id })} style={{ marginBottom: 16 }}>
-          录入今日数据
-        </Button>
-        <Table columns={statColumns} dataSource={statsData} rowKey="id" size="small" pagination={false} />
-      </Modal>
+        {/* 数据录入表单 */}
+        <Card size="small" title={
+          <Space>
+            <span>数据录入</span>
+            <DatePicker value={dataDate} onChange={handleDateChange} allowClear={false} />
+            {!dataDate.isSame(dayjs(), 'day') && (
+              <Button size="small" type="link" onClick={() => handleDateChange(dayjs())}>返回今日</Button>
+            )}
+            {existingRecord && <Tag color="blue">已有数据</Tag>}
+          </Space>
+        } style={{ marginBottom: 16 }}>
+          <Form form={dataForm} layout="vertical" onFinish={handleSubmitData}>
+            <Row gutter={24}>
+              <Col span={12}>
+                <div style={{ marginBottom: 8, fontWeight: 500, color: '#666' }}>累积数据</div>
+                <Row gutter={12}>
+                  <Col span={8}>
+                    <Form.Item name="dailyExits" label="退群人数">
+                      <InputNumber min={0} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="conversions" label="成交人数">
+                      <InputNumber min={0} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="depositUsd" label="入金金额">
+                      <InputNumber min={0} step={0.01} style={{ width: '100%' }} prefix="$" />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Col>
+              <Col span={12}>
+                <div style={{ marginBottom: 8, fontWeight: 500, color: '#666' }}>当日数据</div>
+                <Row gutter={12}>
+                  <Col span={8}>
+                    <Form.Item name="viewers" label="看群人数">
+                      <InputNumber min={0} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="inquiries" label="咨询人数">
+                      <InputNumber min={0} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={8}>
+                    <Form.Item name="intentClients" label="意向客户">
+                      <InputNumber min={0} style={{ width: '100%' }} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </Col>
+            </Row>
+            <Form.Item style={{ marginBottom: 0 }}>
+              <Button type="primary" htmlType="submit">{existingRecord ? '修改' : '提交'}</Button>
+            </Form.Item>
+          </Form>
+        </Card>
 
-      {/* 录入每日数据 */}
-      <Modal title="录入每日数据" open={addStatsModal.open} onCancel={() => setAddStatsModal({ open: false, groupId: null })} footer={null}>
-        <Form form={statsForm} layout="vertical" onFinish={handleAddStats}>
-          <Form.Item name="date" label="日期" initialValue={dayjs()}>
-            <DatePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}><Form.Item name="totalMembers" label="总人数" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="realCustomers" label="真实客户" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="ownAccounts" label="自己账号" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="dailyExits" label="退群人数" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="viewers" label="看群人数" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="inquiries" label="咨询人数" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="conversions" label="成交人数" initialValue={0}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="depositUsd" label="入金金额(USD)" initialValue={0}><InputNumber min={0} step={0.01} style={{ width: '100%' }} prefix="$" /></Form.Item></Col>
-          </Row>
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit">保存</Button>
-              <Button onClick={() => setAddStatsModal({ open: false, groupId: null })}>取消</Button>
-            </Space>
-          </Form.Item>
-        </Form>
+        {/* 历史记录 */}
+        <Card size="small" title="历史记录">
+          <Table
+            columns={historyColumns}
+            dataSource={dataStats}
+            rowKey="id"
+            size="small"
+            pagination={{ pageSize: 10, showSizeChanger: false }}
+            rowClassName={(r) => dayjs(r.date).format('YYYY-MM-DD') === dataDate.format('YYYY-MM-DD') ? 'ant-table-row-selected' : ''}
+          />
+        </Card>
       </Modal>
     </div>
   )
