@@ -10,7 +10,7 @@ const ROLE_WEIGHT = { MEMBER: 1, TRANSLATOR: 1, TEAM_LEADER: 2, SUPERVISOR: 3, D
 // 获取群组列表（含累积统计 + 今日数据）
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { viewMode = 'mine', keyword, startDate, endDate, groupNumber } = req.query;
+    const { viewMode = 'mine', keyword, startDate, endDate, groupNumber, assignedUserId } = req.query;
     let where = {};
 
     if (viewMode === 'mine') {
@@ -34,6 +34,11 @@ router.get('/', authenticate, async (req, res) => {
           where.userId = req.user.id;
         }
       }
+    }
+
+    // 按负责人筛选
+    if (assignedUserId) {
+      where.userId = parseInt(assignedUserId);
     }
 
     if (keyword) {

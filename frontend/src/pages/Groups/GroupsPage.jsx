@@ -24,6 +24,7 @@ export default function GroupsPage() {
   const [searchKeyword, setSearchKeyword] = useState('')
   const [searchDateRange, setSearchDateRange] = useState(null)
   const [searchGroupNumber, setSearchGroupNumber] = useState(undefined)
+  const [searchAssignedUserId, setSearchAssignedUserId] = useState(undefined)
   const [subordinates, setSubordinates] = useState([])
 
   // 新建群组
@@ -94,6 +95,7 @@ export default function GroupsPage() {
     if (searchDateRange && searchDateRange[0]) params.startDate = searchDateRange[0].startOf('day').toISOString()
     if (searchDateRange && searchDateRange[1]) params.endDate = searchDateRange[1].endOf('day').toISOString()
     if (searchGroupNumber) params.groupNumber = searchGroupNumber
+    if (searchAssignedUserId) params.assignedUserId = searchAssignedUserId
     groupApi.list(params).then(setGroups).catch(() => message.error('加载失败')).finally(() => setLoading(false))
   }
 
@@ -104,6 +106,7 @@ export default function GroupsPage() {
     setSearchKeyword('')
     setSearchDateRange(null)
     setSearchGroupNumber(undefined)
+    setSearchAssignedUserId(undefined)
     setLoading(true)
     groupApi.list({ viewMode }).then(setGroups).catch(() => message.error('加载失败')).finally(() => setLoading(false))
   }
@@ -400,6 +403,13 @@ export default function GroupsPage() {
           {viewMode === 'all' && canFilterGroup && groupNumbers.length > 0 && (
             <Select placeholder="小组" allowClear value={searchGroupNumber} onChange={setSearchGroupNumber} style={{ width: 90 }}>
               {groupNumbers.map(n => <Option key={n} value={n}>{n}组</Option>)}
+            </Select>
+          )}
+          {viewMode === 'all' && canViewTeam && subordinates.length > 0 && (
+            <Select placeholder="负责人" allowClear value={searchAssignedUserId} onChange={setSearchAssignedUserId} style={{ width: 120 }}
+              showSearch filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
+            >
+              {subordinates.map(u => <Option key={u.id} value={u.id}>{u.displayName || u.username}</Option>)}
             </Select>
           )}
           <Button type="primary" onClick={handleSearch}>搜索</Button>
