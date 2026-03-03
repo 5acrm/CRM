@@ -33,7 +33,7 @@ c:\CRM\
 │   │       ├── auth.js
 │   │       ├── users.js          # 含 /translators 端点；主管/组长可管理下属
 │   │       ├── customers.js      # 支持 viewMode=mine/all；关联WA账号多对多
-│   │       ├── groups.js         # 支持 viewMode=mine/all
+│   │       ├── groups.js         # viewMode=mine/all；累积统计+今日数据；负责人筛选
 │   │       ├── accounts.js       # WhatsApp 账号；支持 viewMode=mine/all
 │   │       ├── transactions.js   # 财务（CRUD/viewMode/groupNumber/assignedUserId筛选）
 │   │       ├── followups.js      # GET/POST/PUT；GET /customer/:id；建议/回应
@@ -138,16 +138,18 @@ cd C:\CRM\backend && npx prisma db push
   - 旧的 `primaryWaAccountId` 已废弃，改用 `waAccountLinks`
   - 每人只能关联自己的账号（后端校验 userId === req.user.id）
 - **CustomerWaAccount** 字段：customerId / waAccountId / addedById / createdAt
-- **WaGroup** 新增字段：remark（备注）
+- **WaGroup** 字段：totalMembers（群总人数）/ ownAccounts（自己账号数）/ customerCount（客户人数）/ remark（备注）— 新建时录入，为固定值
+- **GroupDailyStat** 6字段结构：dailyExits+conversions+depositUsd（累积型）/ viewers+inquiries+intentClients（当日型）；按 groupId+date 唯一
+- 群组列表自动计算：累积统计（退群/成交/入金总和）+ 今日数据（看群/咨询/意向）+ 百分比（基于 customerCount）
 - **续费提醒** 只发给账号所属人（reminder.js 中发送给 account.userId）
 - **FollowUpRecord** 支持编辑（PUT /followups/:id，仅本人或管理员）
 - **Transaction** 支持编辑/删除（PUT/DELETE /transactions/:id）
 
-## 当前进度（2026-03-02）
+## 当前进度（2026-03-03）
 - [x] 后端所有路由模块开发完成
 - [x] 前端所有页面开发完成
 - [x] WhatsApp 账号管理（搜索/续费/删除/mine-all视图切换）
-- [x] WhatsApp 群组管理（合并/类型属性/月度成本/mine-all视图切换/搜索/统计/备注）
+- [x] WhatsApp 群组管理（群总人数/自己账号/客户人数/14列统计表/数据录入弹窗/累积+当日数据/百分比/斑马纹/负责人筛选/合并/搜索）
 - [x] 客户管理（注册/实名/矿池授权/mine-all/跟进记录列/美国州城市时区/备注/负责人变更）
 - [x] 客户关联WA账号（多选；多对多 CustomerWaAccount 表；仅可关联自己的账号）
 - [x] 跟进记录板块（全量列表/权限过滤/可展开/可跳转/可编辑）
@@ -158,7 +160,7 @@ cd C:\CRM\backend && npx prisma db push
 - [x] 角色权限可见范围修复（viewMode 默认显示自己数据）
 - [x] 数据总览个人/团队切换（组长及以上）
 - [x] 操作日志仅超级管理员可见
-- [x] 群组数据弹窗汇总统计+百分比（退群率/咨询率/成交率）
+- [x] 群组数据录入弹窗（基础信息/汇总统计/分组表单/历史编辑/百分比）
 - [x] 全系统中文化（dayjs zh-cn/美国州城市时区中文/Ant Design zh_CN）
 - [x] 部署到 Railway（Docker + GitHub 自动部署）
 - [x] 超管账号自动创建（xqd/xqd888999）
