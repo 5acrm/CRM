@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message, Tooltip } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Row, Col, DatePicker, message, Tooltip } from 'antd'
 import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { groupApi, userApi } from '../../api'
@@ -297,21 +297,19 @@ export default function GroupsPage() {
         </Space>
       </Card>
 
-      {/* 汇总统计 */}
-      <Row gutter={16} style={{ marginBottom: 12 }}>
-        <Col span={8}>
-          <Card size="small"><Statistic title="活跃群组" value={summaryStats.totalGroups} /></Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small"><Statistic title="总月成本" value={summaryStats.totalCost} prefix="$" precision={0} valueStyle={{ color: '#cf1322' }} /></Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small"><Statistic title="总客户数" value={summaryStats.totalCustomers} /></Card>
-        </Col>
-      </Row>
-
       <Card
-        title="群组管理"
+        title={
+          <Space size="large">
+            <span>群组管理</span>
+            <span style={{ fontSize: 13, fontWeight: 'normal', color: '#666' }}>
+              活跃群组 <strong style={{ color: '#1677ff' }}>{summaryStats.totalGroups}</strong>
+              <span style={{ margin: '0 12px', color: '#d9d9d9' }}>|</span>
+              总月成本 <strong style={{ color: '#cf1322' }}>${summaryStats.totalCost.toLocaleString()}</strong>
+              <span style={{ margin: '0 12px', color: '#d9d9d9' }}>|</span>
+              总客户数 <strong style={{ color: '#1677ff' }}>{summaryStats.totalCustomers}</strong>
+            </span>
+          </Space>
+        }
         extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModal(true)}>新建群组</Button>}
       >
         <Table

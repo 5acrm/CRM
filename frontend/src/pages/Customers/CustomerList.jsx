@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Table, Button, Input, Select, Space, Tag, Card, Row, Col, Modal, Form, message, Popconfirm, Badge, Tooltip } from 'antd'
+import { Table, Button, Input, Select, Space, Tag, Card, Row, Col, Modal, Form, message, Popconfirm, Badge, Popover } from 'antd'
 import { PlusOutlined, SearchOutlined, EyeOutlined, DeleteOutlined, UserOutlined, TeamOutlined, StarFilled, StarOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { customerApi, groupApi, userApi, accountApi } from '../../api'
@@ -118,14 +118,13 @@ export default function CustomerList() {
       title: '跟进记录',
       dataIndex: 'followUpRecords',
       width: 200,
-      ellipsis: true,
       render: (records) => {
         const latest = records?.[0]
         if (!latest) return <span style={{ color: '#999' }}>-</span>
         return (
-          <Tooltip title={latest.content} placement="topLeft">
-            <span style={{ color: '#666' }}>{latest.content}</span>
-          </Tooltip>
+          <Popover content={<div style={{ maxWidth: 350, maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{latest.content}</div>} trigger="hover" placement="topLeft">
+            <div style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#666', cursor: 'pointer' }}>{latest.content}</div>
+          </Popover>
         )
       }
     },

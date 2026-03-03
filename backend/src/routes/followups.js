@@ -118,6 +118,39 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// 修改跟进记录
+router.put('/:id', authenticate, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const record = await prisma.followUpRecord.findUnique({ where: { id } });
+    if (!record) return res.status(404).json({ message: '跟进记录不存在' });
+
+    const isAdmin = ['SUPER_ADMIN', 'ADMIN'].includes(req.user.role);
+    if (!isAdmin && record.userId !== req.user.id) {
+      return res.status(403).json({ message: '只能修改自己的跟进记录' });
+    }
+
+    const { content, contactType, waAccountId, waRole } = req.body;
+    const updated = await prisma.followUpRecord.update({
+      where: { id },
+      data: {
+        ...(content !== undefined && { content }),
+        ...(contactType !== undefined && { contactType }),
+        ...(waAccountId !== undefined && { waAccountId: waAccountId ? parseInt(waAccountId) : null }),
+        ...(waRole !== undefined && { waRole: waRole || null })
+      },
+      include: {
+        user: { select: { id: true, displayName: true, role: true } },
+        waAccount: { select: { id: true, nickname: true, phoneNumber: true, role: true } }
+      }
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: '服务器错误' });
+  }
+});
+
 // 添加建议/评价（组长及以上）
 router.post('/:recordId/comments', authenticate, async (req, res) => {
   try {

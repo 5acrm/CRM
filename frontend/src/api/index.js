@@ -85,6 +85,7 @@ export const followUpApi = {
   listAll: (params) => api.get('/followups', { params }),
   listByCustomer: (customerId) => api.get(`/followups/customer/${customerId}`),
   create: (data) => api.post('/followups', data),
+  update: (id, data) => api.put(`/followups/${id}`, data),
   addComment: (recordId, data) => api.post(`/followups/${recordId}/comments`, data),
   addResponse: (commentId, data) => api.post(`/followups/comments/${commentId}/responses`, data)
 }

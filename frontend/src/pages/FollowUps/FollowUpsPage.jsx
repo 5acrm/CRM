@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Table, Button, Input, Select, Space, Tag, Card, Form, message, Typography, Badge } from 'antd'
-import { SearchOutlined, MessageOutlined, PhoneOutlined, VideoCameraOutlined } from '@ant-design/icons'
+import { Table, Button, Input, Select, Space, Tag, Card, Form, message, Typography, Badge, Tooltip, Popover } from 'antd'
+import { SearchOutlined, MessageOutlined, PhoneOutlined, VideoCameraOutlined, EditOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import dayjs from 'dayjs'
 import { followUpApi, userApi } from '../../api'
@@ -17,6 +17,8 @@ export default function FollowUpsPage() {
   const [subordinates, setSubordinates] = useState([])
   const [search, setSearch] = useState({})
   const [page, setPage] = useState(1)
+  const [editModal, setEditModal] = useState({ open: false, record: null })
+  const [editForm] = Form.useForm()
 
   const canViewTeam = ROLE_WEIGHT[user.role] >= ROLE_WEIGHT['TEAM_LEADER']
 
@@ -35,6 +37,21 @@ export default function FollowUpsPage() {
   useEffect(() => { fetchData() }, [page, search])
 
   const handleSearch = (vals) => { setSearch(vals); setPage(1) }
+
+  const openEdit = (record) => {
+    setEditModal({ open: true, record })
+    editForm.setFieldsValue({ content: record.content, contactType: record.contactType })
+  }
+
+  const handleEdit = async (vals) => {
+    try {
+      await followUpApi.update(editModal.record.id, vals)
+      message.success('修改成功')
+      setEditModal({ open: false, record: null })
+      editForm.resetFields()
+      fetchData()
+    } catch (err) { message.error(err.message || '修改失败') }
+  }
 
   const contactTypeIcon = (type) => {
     if (type === 'CALL') return <PhoneOutlined style={{ color: '#52c41a' }} />
@@ -101,8 +118,11 @@ export default function FollowUpsPage() {
     {
       title: '跟进内容',
       dataIndex: 'content',
+      width: 280,
       render: (text) => (
-        <Text ellipsis={{ tooltip: text }} style={{ maxWidth: 280, display: 'block' }}>{text}</Text>
+        <Popover content={<div style={{ maxWidth: 400, maxHeight: 300, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{text}</div>} trigger="hover" placement="topLeft">
+          <div style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>{text}</div>
+        </Popover>
       )
     },
     {
@@ -134,8 +154,16 @@ export default function FollowUpsPage() {
     {
       title: '时间',
       dataIndex: 'createdAt',
-      width: 130,
+      width: 100,
       render: (v) => dayjs(v).format('MM-DD HH:mm')
+    },
+    {
+      title: '操作',
+      width: 60,
+      fixed: 'right',
+      render: (_, r) => (r.userId === user.id || ['SUPER_ADMIN', 'ADMIN'].includes(user.role))
+        ? <Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); openEdit(r) }}>改</Button>
+        : null
     }
   ]
 
@@ -191,6 +219,25 @@ export default function FollowUpsPage() {
           rowClassName={() => 'cursor-pointer'}
         />
       </Card>
+
+      <Modal title="修改跟进记录" open={editModal.open} onCancel={() => setEditModal({ open: false, record: null })} footer={null}>
+        <Form form={editForm} layout="vertical" onFinish={handleEdit}>
+          <Form.Item name="contactType" label="联系方式">
+            <Select>
+              {Object.entries(CONTACT_TYPE_LABELS).map(([k, v]) => <Option key={k} value={k}>{v}</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="content" label="跟进内容" rules={[{ required: true, message: '请填写跟进内容' }]}>
+            <Input.TextArea rows={4} />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">保存</Button>
+              <Button onClick={() => setEditModal({ open: false, record: null })}>取消</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   )
 }
