@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Row, Col, DatePicker, message, Tooltip } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, InputNumber, Select, Space, Tag, Statistic, Row, Col, DatePicker, message, Tooltip } from 'antd'
 import { PlusOutlined, BarChartOutlined, MergeCellsOutlined, UserOutlined, TeamOutlined, WarningOutlined, EditOutlined, SearchOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { groupApi, userApi } from '../../api'
@@ -54,6 +54,24 @@ export default function GroupsPage() {
       totalCustomers: active.reduce((sum, g) => sum + (g._count?.customers || 0), 0)
     }
   }, [groups])
+
+  // 每日数据汇总统计（弹窗用）
+  const dailyStatsAgg = useMemo(() => {
+    if (!statsData || statsData.length === 0) return null
+    const latest = statsData[0] // 按日期倒序，第一条是最新
+    const totalExits = statsData.reduce((s, d) => s + (d.dailyExits || 0), 0)
+    const totalViewers = statsData.reduce((s, d) => s + (d.viewers || 0), 0)
+    const totalInquiries = statsData.reduce((s, d) => s + (d.inquiries || 0), 0)
+    const totalConversions = statsData.reduce((s, d) => s + (d.conversions || 0), 0)
+    const latestTotal = latest.totalMembers || 0
+    const latestReal = latest.realCustomers || 0
+    return {
+      latestTotal, latestReal, totalExits, totalViewers, totalInquiries, totalConversions,
+      inquiryRate: totalViewers > 0 ? (totalInquiries / totalViewers * 100).toFixed(1) : '0',
+      conversionRate: totalInquiries > 0 ? (totalConversions / totalInquiries * 100).toFixed(1) : '0',
+      exitRate: latestTotal > 0 ? (totalExits / latestTotal * 100).toFixed(1) : '0'
+    }
+  }, [statsData])
 
   useEffect(() => {
     if (canFilterGroup) userApi.subordinates().then(setSubordinates).catch(() => {})
@@ -448,6 +466,19 @@ export default function GroupsPage() {
             <Col span={6}><Statistic title="群组月成本" value={summary.groupCost} prefix="$" precision={0} valueStyle={{ color: '#cf1322' }} /></Col>
             <Col span={6}><Statistic title="净利润" value={summary.netProfit} prefix="$" precision={2} valueStyle={{ color: summary.netProfit >= 0 ? '#3f8600' : '#cf1322' }} /></Col>
           </Row>
+        )}
+
+        {dailyStatsAgg && (
+          <Card size="small" style={{ marginBottom: 16, background: '#fafafa' }}>
+            <Row gutter={16}>
+              <Col span={4}><Statistic title="最新总人数" value={dailyStatsAgg.latestTotal} valueStyle={{ fontSize: 18 }} /></Col>
+              <Col span={4}><Statistic title="真实客户" value={dailyStatsAgg.latestReal} valueStyle={{ fontSize: 18 }} /></Col>
+              <Col span={4}><Statistic title="累计退群" value={dailyStatsAgg.totalExits} valueStyle={{ fontSize: 18, color: '#cf1322' }} suffix={<span style={{ fontSize: 12, color: '#999' }}>({dailyStatsAgg.exitRate}%)</span>} /></Col>
+              <Col span={4}><Statistic title="累计看群" value={dailyStatsAgg.totalViewers} valueStyle={{ fontSize: 18 }} /></Col>
+              <Col span={4}><Statistic title="累计咨询" value={dailyStatsAgg.totalInquiries} valueStyle={{ fontSize: 18, color: '#1677ff' }} suffix={<span style={{ fontSize: 12, color: '#999' }}>({dailyStatsAgg.inquiryRate}%)</span>} /></Col>
+              <Col span={4}><Statistic title="累计成交" value={dailyStatsAgg.totalConversions} valueStyle={{ fontSize: 18, color: '#3f8600' }} suffix={<span style={{ fontSize: 12, color: '#999' }}>({dailyStatsAgg.conversionRate}%)</span>} /></Col>
+            </Row>
+          </Card>
         )}
 
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddStatsModal({ open: true, groupId: statsModal.group?.id })} style={{ marginBottom: 16 }}>

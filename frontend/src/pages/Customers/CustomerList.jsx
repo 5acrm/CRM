@@ -275,7 +275,7 @@ export default function CustomerList() {
             </Col>
             <Col span={8}>
               <Form.Item name="usCity" label="城市">
-                <Select placeholder="选择城市" allowClear showSearch disabled={!selectedState}
+                <Select placeholder="选择城市" allowClear showSearch
                   filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
                 >
                   {citiesForState.map(c => <Option key={c} value={c}>{c}</Option>)}

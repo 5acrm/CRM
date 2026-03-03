@@ -50,6 +50,8 @@ export default function CustomerDetail() {
   const [txEditForm] = Form.useForm()
   const [reminderModal, setReminderModal] = useState(false)
   const [reminderForm] = Form.useForm()
+  const [editFollowUpModal, setEditFollowUpModal] = useState({ open: false, record: null })
+  const [editFollowUpForm] = Form.useForm()
 
   const [editSelectedState, setEditSelectedState] = useState(null)
 
@@ -94,6 +96,16 @@ export default function CustomerDetail() {
       followUpForm.resetFields()
       followUpApi.listByCustomer(id).then(setFollowUps)
     } catch (err) { message.error(err.message || '添加失败') }
+  }
+
+  const handleEditFollowUp = async (vals) => {
+    try {
+      await followUpApi.update(editFollowUpModal.record.id, vals)
+      message.success('跟进记录已修改')
+      setEditFollowUpModal({ open: false, record: null })
+      editFollowUpForm.resetFields()
+      followUpApi.listByCustomer(id).then(setFollowUps)
+    } catch (err) { message.error(err.message || '修改失败') }
   }
 
   const handleAddComment = async (vals) => {
@@ -396,15 +408,30 @@ export default function CustomerDetail() {
                           </div>
                         ))}
 
-                        {canComment && (
-                          <Button
-                            size="small"
-                            type="link"
-                            onClick={() => setCommentModal({ open: true, recordId: record.id })}
-                          >
-                            添加建议
-                          </Button>
-                        )}
+                        <Space>
+                          {(record.userId === user.id || ['SUPER_ADMIN', 'ADMIN'].includes(user.role)) && (
+                            <Button
+                              size="small"
+                              type="link"
+                              icon={<EditOutlined />}
+                              onClick={() => {
+                                setEditFollowUpModal({ open: true, record })
+                                editFollowUpForm.setFieldsValue({ content: record.content, contactType: record.contactType })
+                              }}
+                            >
+                              编辑
+                            </Button>
+                          )}
+                          {canComment && (
+                            <Button
+                              size="small"
+                              type="link"
+                              onClick={() => setCommentModal({ open: true, recordId: record.id })}
+                            >
+                              添加建议
+                            </Button>
+                          )}
+                        </Space>
                       </div>
                     </List.Item>
                   )}
@@ -621,7 +648,7 @@ export default function CustomerDetail() {
             </Col>
             <Col span={8}>
               <Form.Item name="usCity" label="城市">
-                <Select placeholder="选择城市" allowClear showSearch disabled={!editSelectedState}
+                <Select placeholder="选择城市" allowClear showSearch
                   filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}
                 >
                   {editCitiesForState.map(c => <Option key={c} value={c}>{c}</Option>)}
@@ -681,6 +708,26 @@ export default function CustomerDetail() {
             <Space>
               <Button type="primary" htmlType="submit">保存</Button>
               <Button onClick={() => setEditModal(false)}>取消</Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑跟进记录 */}
+      <Modal title="编辑跟进记录" open={editFollowUpModal.open} onCancel={() => setEditFollowUpModal({ open: false, record: null })} footer={null}>
+        <Form form={editFollowUpForm} layout="vertical" onFinish={handleEditFollowUp}>
+          <Form.Item name="contactType" label="联系方式">
+            <Select>
+              {Object.entries(CONTACT_TYPE_LABELS).map(([k, v]) => <Option key={k} value={k}>{v}</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="content" label="跟进内容" rules={[{ required: true, message: '请填写跟进内容' }]}>
+            <TextArea rows={4} />
+          </Form.Item>
+          <Form.Item>
+            <Space>
+              <Button type="primary" htmlType="submit">保存</Button>
+              <Button onClick={() => setEditFollowUpModal({ open: false, record: null })}>取消</Button>
             </Space>
           </Form.Item>
         </Form>
