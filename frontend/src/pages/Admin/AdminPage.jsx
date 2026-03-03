@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Badge, message, Tabs, Popconfirm, Divider } from 'antd'
+import { Card, Table, Button, Modal, Form, Input, Select, Space, Tag, Badge, message, Tabs, Popconfirm } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons'
 import { userApi } from '../../api'
 import { ROLE_LABELS, ROLE_WEIGHT } from '../../store/auth'
@@ -21,11 +21,10 @@ export default function AdminPage() {
   const [pwdForm] = Form.useForm()
   const [deptForm] = Form.useForm()
 
-  const isAdmin = ROLE_WEIGHT[currentUser.role] >= ROLE_WEIGHT['ADMIN']
-  const isSupervisor = currentUser.role === 'SUPERVISOR'
-  const isTeamLeader = currentUser.role === 'TEAM_LEADER'
+  const isAdmin = ROLE_WEIGHT[currentUser?.role] >= ROLE_WEIGHT['ADMIN']
+  const isSupervisor = currentUser?.role === 'SUPERVISOR'
+  const isTeamLeader = currentUser?.role === 'TEAM_LEADER'
 
-  // 当前用户可创建/编辑的角色范围
   const getAllowedRoles = () => {
     if (isAdmin) return Object.entries(ROLE_LABELS).filter(([k]) => k !== 'SUPER_ADMIN')
     if (isSupervisor) return Object.entries(ROLE_LABELS).filter(([k]) => ['TEAM_LEADER', 'MEMBER'].includes(k))
@@ -38,7 +37,10 @@ export default function AdminPage() {
     const tasks = [userApi.list()]
     if (isAdmin) tasks.push(userApi.departments())
     Promise.all(tasks)
-      .then(([u, d]) => { setUsers(u); if (d) setDepartments(d) })
+      .then(([u, d]) => {
+        if (Array.isArray(u)) setUsers(u)
+        if (d && Array.isArray(d)) setDepartments(d)
+      })
       .catch(() => message.error('加载失败'))
       .finally(() => setLoading(false))
   }
@@ -112,8 +114,9 @@ export default function AdminPage() {
     setEditModal({ open: true, user: u })
   }
 
-  const UserForm = ({ form, onFinish, isEdit = false }) => (
-    <Form form={form} layout="vertical" onFinish={onFinish}>
+  // 渲染表单内容（直接内联，避免在组件内定义子组件导致 React 重新挂载）
+  const renderFormFields = (targetForm, onFinish, isEdit, editUser) => (
+    <Form form={targetForm} layout="vertical" onFinish={onFinish}>
       {!isEdit && (
         <Form.Item name="username" label="用户名" rules={[{ required: true }]}><Input /></Form.Item>
       )}
@@ -137,11 +140,16 @@ export default function AdminPage() {
             </Select>
           </Form.Item>
           <Form.Item name="superiorId" label="上级">
-            <Select placeholder="选择上级" allowClear showSearch filterOption={(input, option) => option.children?.toLowerCase().includes(input.toLowerCase())}>
-              {users.filter(u => u.id !== editModal.user?.id).map(u => (
-                <Option key={u.id} value={u.id}>{u.displayName || u.username} ({ROLE_LABELS[u.role]})</Option>
-              ))}
-            </Select>
+            <Select
+              placeholder="选择上级"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              options={users.filter(u => u.id !== editUser?.id).map(u => ({
+                value: u.id,
+                label: `${u.displayName || u.username} (${ROLE_LABELS[u.role] || u.role})`
+              }))}
+            />
           </Form.Item>
         </>
       )}
@@ -181,7 +189,7 @@ export default function AdminPage() {
         <Space size="small">
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(u)}>编辑</Button>
           <Button size="small" icon={<KeyOutlined />} onClick={() => { setPwdModal({ open: true, user: u }); pwdForm.resetFields() }}>改密码</Button>
-          {isAdmin && u.id !== currentUser.id && (
+          {isAdmin && u.id !== currentUser?.id && (
             <Popconfirm
               title="确认删除该用户？"
               description="若有关联数据则无法删除，可改为禁用。"
@@ -244,12 +252,12 @@ export default function AdminPage() {
     <div style={{ padding: 24 }}>
       <Tabs items={tabItems} />
 
-      <Modal title="新建用户" open={createModal} onCancel={() => setCreateModal(false)} footer={null} width={600}>
-        <UserForm form={form} onFinish={handleCreate} isEdit={false} />
+      <Modal title="新建用户" open={createModal} onCancel={() => setCreateModal(false)} footer={null} width={600} destroyOnClose>
+        {renderFormFields(form, handleCreate, false, null)}
       </Modal>
 
-      <Modal title="编辑用户" open={editModal.open} onCancel={() => setEditModal({ open: false, user: null })} footer={null} width={600}>
-        <UserForm form={editForm} onFinish={handleEdit} isEdit={true} />
+      <Modal title="编辑用户" open={editModal.open} onCancel={() => setEditModal({ open: false, user: null })} footer={null} width={600} destroyOnClose>
+        {renderFormFields(editForm, handleEdit, true, editModal.user)}
       </Modal>
 
       <Modal
@@ -257,6 +265,7 @@ export default function AdminPage() {
         open={pwdModal.open}
         onCancel={() => { setPwdModal({ open: false, user: null }); pwdForm.resetFields() }}
         footer={null}
+        destroyOnClose
       >
         <Form form={pwdForm} layout="vertical" onFinish={handleChangePwd} style={{ marginTop: 16 }}>
           <Form.Item name="password" label="新密码" rules={[{ required: true }, { min: 6, message: '密码至少6位' }]}>
@@ -283,7 +292,7 @@ export default function AdminPage() {
       </Modal>
 
       {isAdmin && (
-        <Modal title="新建部门" open={deptModal} onCancel={() => setDeptModal(false)} footer={null}>
+        <Modal title="新建部门" open={deptModal} onCancel={() => setDeptModal(false)} footer={null} destroyOnClose>
           <Form form={deptForm} layout="vertical" onFinish={handleCreateDept}>
             <Form.Item name="name" label="部门名称" rules={[{ required: true }]}><Input /></Form.Item>
             <Form.Item>
