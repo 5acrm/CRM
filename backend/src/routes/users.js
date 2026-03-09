@@ -198,13 +198,13 @@ router.put('/:id', authenticate, async (req, res) => {
 
     const { displayName, role: newRole, email, departmentId, superiorId, isActive, password, groupNumber } = req.body;
 
-    const updateData = {
-      displayName,
-      email,
-      departmentId: isAdmin ? (departmentId || null) : undefined,
-      superiorId: isAdmin ? (superiorId || null) : undefined,
-      groupNumber: groupNumber ? parseInt(groupNumber) : null
-    };
+    // 只更新明确提供的字段，避免清空未传递的字段
+    const updateData = {};
+    if (displayName !== undefined) updateData.displayName = displayName;
+    if (email !== undefined) updateData.email = email;
+    if (isAdmin && 'departmentId' in req.body) updateData.departmentId = departmentId || null;
+    if (isAdmin && 'superiorId' in req.body) updateData.superiorId = superiorId || null;
+    if ('groupNumber' in req.body) updateData.groupNumber = groupNumber ? parseInt(groupNumber) : null;
     if (newRole && newRole !== 'SUPER_ADMIN') updateData.role = newRole;
     if (typeof isActive === 'boolean') updateData.isActive = isActive;
     if (password && password.length >= 6) {
